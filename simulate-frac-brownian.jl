@@ -60,22 +60,17 @@ function lang_soln(h,t_steps,noise_steps,gam,m,t_fin)
 end
 
 # 10000:20 bad around 8, 5000:20 bad around 16, 2500:20 good
+# t_fin/(t_steps*noise_steps) = 1/200
 
-function return_lang_soln(h,t_steps,noise_steps,gam,m,t_fin)
-	if t_fin/(t_steps*noise_steps) < 1.0/125.0
-		proper_noise = 125.0*t_fin/t_steps
-		println("STOP Bad Parameters: Make Noise Steps=$proper_noise")
-		return 0,0
-	else
-		return lang_soln(h,t_steps,noise_steps,gam,m,t_fin)
-	end
+time_steps = 200
+noise_steps = 100
+final_time = time_steps/2
+for i in 1:3
+	h = i/4
+	dats = lang_soln(h,time_steps,noise_steps,1,1,final_time)
+	plot(dats[1],dats[2],label="$h")
 end
-
-la0p25 = return_lang_soln(0.25,100,50,1,1,40)
-plot(la0p25[1],la0p25[2],label="0.25")
-#la0p5 = lang_soln(0.5,100,50,1,1,40)
-#la0p75 = lang_soln(0.75,100,50,1,1,40)
-
+legend()
 
 
 
