@@ -117,6 +117,20 @@ end
 s0 = 0.5580484388471367#mean(sigs)
 #println("Sigma=",s0," +/- ",std(sigs))
 
+
+
+
+#=  Figure of covariance
+h = 0.75
+steps = 100
+final_time = 1
+avg_counts = 200
+motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avg_counts]
+here = calc_covar(h,avg_counts,motion,s0)
+plot(1:steps-1,here[1],1:steps-1,here[2])
+=#
+
+#=  Convergence of B^2 for number of counts
 h = 0.25
 steps = 50
 final_time = 1
@@ -134,28 +148,25 @@ for i in 1:num_counts
 	th_b2[i] = this[2]
 end
 plot(counts,b2_vals,counts,th_b2)
+=#
 
 
 
-#=
 counts = 10
-avging_counts = 50
+avging_counts = 200
 h_vals = [0.25 + (i-1)*0.5/counts for i in 1:counts]
-b2_vals_b2 = [0.0 for i in 1:counts]
-th_b2_vals_b2 = [0.0 for i in 1:counts]
+b2 = [0.0 for i in 1:counts]
+th_b2 = [0.0 for i in 1:counts]
 for i in 1:counts
 	h = 0.25 + (i-1)*0.5/counts
 	println("Motion for i=",i)
 	motion_here = [frac_brown_wiki2(h,100,1)[2] for k in 1:avging_counts]
-	s0_b2 = calc_sigma0_b2(h,avging_counts,motion_here)
-	th_b2_vals_b2[i] = s0_b2*gamma(2-2*h)/(2*h*gamma(1.5-h)*gamma(0.5+h))
 	println("B^2 Calc for i=",i)
-	for j in 1:avging_counts
-		b2_vals_b2[i] += (last(motion_here[j])^2)/avging_counts
-	end
+	here = calc_b2(h,avging_counts,motion_here,s0)
+	b2[i] = here[1]
+	th_b2[i] = here[2]
 end
-plot(h_vals,b2_vals_b2,label="B^2 Exp")
-=#
+plot(h_vals,b2,h_vals,th_b2)
 #plot(h_vals,th_b2_vals_b2,label="B^2 TH")
 #plot(h_vals,b2_vals_covar,label="Covariance EXP")
 #plot(h_vals,th_b2_vals_covar,label="Covariance TH")
