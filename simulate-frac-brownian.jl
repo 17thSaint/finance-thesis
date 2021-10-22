@@ -1,4 +1,4 @@
-using Cubature, SpecialFunctions, HypergeometricFunctions, PyPlot, MittagLeffler, Statistics
+using Cubature, SpecialFunctions, HypergeometricFunctions, PyPlot, MittagLeffler, Statistics, FinancialToolbox
 
 
 function frac_brown_wiki2(h,n,t_fin)
@@ -103,6 +103,30 @@ function calc_sigma(avging_counts,motion)
 	return mean(sigma0), std(sigma0)
 end
 
+function asset_price(n,t_fin,volat,corr,r,start_price)
+	dB = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
+	dW = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
+	asset = append!([start_price],[0.0 for i in 1:n])
+	times = [i*t_fin/n for i in 0:n]
+	for i in 2:n+1
+		change_asset = r*asset[i-1]*(t_fin/n)+volat[i-1]*asset[i-1]*(corr*dW[i-1]+sqrt(1-corr^2)*dB[i-1])
+		asset[i] = asset[i-1] + change_asset
+	end
+	return times,asset
+end
+
+function get_imp_vol(asset_now,r,t_mat,volat,points)
+	range_strike = [0.9*asset_now + i*0.2*asset_now/points for i in 0:points-1]
+	implied_vol = [0.0 for i in 1:points]
+	for i in 1:points
+		option_price = blkprice(asset_now,range_strike[i],r,t_mat,volat,0,FlagIsCall="true")
+		implied_vol[i] = blsimpv(asset_now,range_strike[i],r,t_mat,option_price,0,FlagIsCall="true")
+	end
+	return range_strike,implied_vol
+end
+
+
+
 #=
 num = 50
 sigs = [0.0 for i in 1:num]
@@ -116,6 +140,8 @@ end
 =#
 s0 = 0.5580484388471367#mean(sigs)
 #println("Sigma=",s0," +/- ",std(sigs))
+
+
 
 
 
@@ -151,7 +177,7 @@ plot(counts,b2_vals,counts,th_b2)
 =#
 
 
-
+#=
 counts = 10
 avging_counts = 200
 h_vals = [0.25 + (i-1)*0.5/counts for i in 1:counts]
@@ -170,7 +196,7 @@ plot(h_vals,b2,h_vals,th_b2)
 #plot(h_vals,th_b2_vals_b2,label="B^2 TH")
 #plot(h_vals,b2_vals_covar,label="Covariance EXP")
 #plot(h_vals,th_b2_vals_covar,label="Covariance TH")
-	
+=#	
 
 #= Figure sigma0calc-b2-covar.png shows that the two calculation methods are quite close to each other, but their variances are quite large
 
