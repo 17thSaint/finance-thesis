@@ -1,4 +1,4 @@
-using Cubature, SpecialFunctions, HypergeometricFunctions, PyPlot, MittagLeffler, Statistics, FinancialToolbox
+using HDF5, Cubature, SpecialFunctions, HypergeometricFunctions, PyPlot, MittagLeffler, Statistics, FinancialToolbox
 
 
 function frac_brown_wiki2(h,n,t_fin)
@@ -6,9 +6,9 @@ function frac_brown_wiki2(h,n,t_fin)
 	dB = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
 	bh = fill(0.0,n)
 	for j in 1:n
-		#if j%(0.05*n) == 0
-		#	println("H=",h,", ",100*j/n,"%",", Noise")
-		#end
+		if j%(0.05*n) == 0
+			println("H=",h,", ",100*j/n,"%",", Noise")
+		end
 		for i in 0:j-1
 			function integrand(s)
 				return (((times[j+1]-s)^(h-0.5))/gamma(h+0.5))*_₂F₁(h-0.5,0.5-h,h+0.5,1-times[j+1]/s)
@@ -32,10 +32,10 @@ function eta(gam,h,kBT)
 	return sqrt(2*gam*kBT*gamma(1.5-h)*gamma(0.5+h)/(gamma(2*h)*gamma(2-2*h)))
 end
 
-function lang_soln(h,t_steps,noise_steps,gam,m,t_fin)
-	times = [i*t_fin/t_steps for i in 0:t_steps]
+function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0)
+	times = [i*t_fin/t_steps for i in 0:t_steps-1]
 	term_one = [0.0 for i in 1:t_steps]
-	#term_two = [0.0 for i in 1:t_steps]
+	term_two = [0.0 for i in 1:t_steps]
 	noise_term = noise(h,Int(t_steps*noise_steps),t_fin)
 	c_eta = eta(gam,h,1)
 	for i in 1:t_steps
@@ -49,14 +49,14 @@ function lang_soln(h,t_steps,noise_steps,gam,m,t_fin)
 		for k in 0:noise_steps-1
 			time_now = noise_times[k+1]
 			mitlef = mittleff(2*h,2,(-gam/m)*(time_now^(2*h)))
-			#if k == 0
-			#	term_two[i] += v0*time_now*mitlef
-			#end
+			if v0 != 0.0 && k == 0
+				term_two[i] += v0*time_now*mitlef
+			end
 			term_one[i] += c_eta * noise_term[noise_steps*i-k] * time_now * mitlef
 		end
 	end
-	full_position = append!([0.0],term_one./m) #+ term_two)
-	return times,full_position
+	full_position = term_one./m + term_two
+	return times,term_one./m,term_two,full_position
 end
 
 function calc_b2(h,avging_counts,motion,sigma0)
@@ -109,6 +109,9 @@ function asset_price(n,t_fin,volat,corr,r,start_price)
 	asset = append!([start_price],[0.0 for i in 1:n])
 	times = [i*t_fin/n for i in 0:n]
 	for i in 2:n+1
+		if i%(0.05*n) == 0
+			println("H=",h,", ",100*(i-1)/n,"%",", Asset Price")
+		end
 		change_asset = r*asset[i-1]*(t_fin/n)+volat[i-1]*asset[i-1]*(corr*dW[i-1]+sqrt(1-corr^2)*dB[i-1])
 		asset[i] = asset[i-1] + change_asset
 	end
@@ -116,14 +119,57 @@ function asset_price(n,t_fin,volat,corr,r,start_price)
 end
 
 function get_imp_vol(asset_now,r,t_mat,volat,points)
-	range_strike = [0.9*asset_now + i*0.2*asset_now/points for i in 0:points-1]
+	range_strike = [0.7*asset_now + i*0.6*asset_now/points for i in 0:points-1]
 	implied_vol = [0.0 for i in 1:points]
 	for i in 1:points
-		option_price = blkprice(asset_now,range_strike[i],r,t_mat,volat,0,FlagIsCall="true")
-		implied_vol[i] = blsimpv(asset_now,range_strike[i],r,t_mat,option_price,0,FlagIsCall="true")
+		option_price = blkprice(asset_now,range_strike[i],r,t_mat,volat)
+		implied_vol[i] = blsimpv(asset_now,range_strike[i],r,t_mat,option_price)
 	end
 	return range_strike,implied_vol
 end
+
+function get_volatility(h,t_steps,gam,m,t_fin,volat0)
+	v0 = log(volat0)
+	volat = append!([volat0],[0.0 for i in 1:t_steps-1])
+	base = lang_soln(h,t_steps,100,gam,m,t_fin,v0)
+	for i in 1:t_steps-1
+		if i%(0.05*t_steps) == 0
+			println("H=",h,", ",100*i/t_steps,"%",", Volatility")
+		end
+		volat[i+1] = exp((base[2][i+1]-base[2][i])/(t_fin/t_steps))
+	end
+	return base,volat
+end
+
+function read_hdf5_data(h,count,folder)
+	#cd("..")
+	#cd("$folder")
+	file = h5open("fBM-h-$h-$count.hdf5","r")
+	data = [read(file["values"],"deets_t"), read(file["values"],"deets_v")]
+	#cd("..")
+	return data
+end
+
+
+
+h = 0.75
+time_steps = 50
+gam = 1
+m = 1
+final_time = 10
+start_volat = 0.1
+v0 = log(start_volat)
+corr = 0.0
+r = 0.0
+price_start = 50.0
+base = lang_soln(h,time_steps,100,gam,m,final_time,v0)
+#volatility = get_volatility(h,time_steps,gam,m,final_time,start_volat)
+#asset = asset_price(time_steps,final_time,volatility[2],corr,r,price_start)
+#plot(asset[1],asset[2])
+plot(base[1],base[2],base[1],base[3])
+
+
+
 
 
 
@@ -138,8 +184,9 @@ for i in 1:num
 	stds[i] = here[2]
 end
 =#
-s0 = 0.5580484388471367#mean(sigs)
+#s0 = 0.5580484388471367mean(sigs)
 #println("Sigma=",s0," +/- ",std(sigs))
+
 
 
 
