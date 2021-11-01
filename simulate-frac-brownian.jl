@@ -22,8 +22,22 @@ function frac_brown_wiki2(h,n,t_fin)
 	return times, full_bh
 end
 
-function noise(h,n,t_fin)
-	fBM = frac_brown_wiki2(h,n,t_fin)[2]
+function read_hdf5_data(h,count,slice=false,len=1)
+	cd("fBM-data")
+	file = h5open("fBM-h-$h-$count.hdf5","r")
+	data = [read(file["values"],"deets_t"), read(file["values"],"deets_v")]
+	cd("..")
+	if slice
+		data = [read(file["values"],"deets_t")[1:len], read(file["values"],"deets_v")[1:len]]
+	end
+	return data
+end
+
+function noise(h,n,t_fin,which=rand(1:20),make_new=false)
+	fBM = read_hdf5_data(h,which,true,n+1)[2]
+	if make_new
+		fBM = frac_brown_wiki2(h,n,t_fin)[2]
+	end
 	return [t_fin*(fBM[i+1]-fBM[i])/n for i in 1:n]
 end
 
@@ -32,11 +46,11 @@ function eta(gam,h,kBT)
 	return sqrt(2*gam*kBT*gamma(1.5-h)*gamma(0.5+h)/(gamma(2*h)*gamma(2-2*h)))
 end
 
-function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0)
+function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0,which=rand(1:20))
 	times = [i*t_fin/t_steps for i in 0:t_steps-1]
 	term_one = [0.0 for i in 1:t_steps]
 	term_two = [0.0 for i in 1:t_steps]
-	noise_term = noise(h,Int(t_steps*noise_steps),t_fin)
+	noise_term = noise(h,Int(t_steps*noise_steps),t_fin,which)
 	c_eta = eta(gam,h,1)
 	for i in 1:t_steps
 		if i%(0.05*t_steps) == 0
@@ -59,6 +73,17 @@ function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0)
 	return times,term_one./m,term_two,full_position
 end
 
+h = 0.5
+lam = 3
+gamma_prime = 1
+a = 2
+m = lam
+gam = lam*gamma_prime - a
+for i in 1:20
+	res = lang_soln(h,100,100,gam,m,1,0,i)
+	plot(res[1],res[4])
+end
+
 function calc_b2(h,avging_counts,motion,sigma0)
 	#steps = 100
 	#final_time = 1
@@ -74,7 +99,7 @@ end
 function calc_covar(h,avging_counts,motion,sigma0)
 	final_time = 1
 	steps = 100
-	#motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avging_counts]
+	motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avging_counts]
 	covar = [0.0 for i in 1:steps-1]
 	coeff = (sigma0^2)*gamma(2-2*h)/(4*h*gamma(1.5-h)*gamma(0.5+h))
 	th_covar = [coeff*(final_time^(2*h)+(i*final_time/steps)^(2*h)-(abs(final_time-i*final_time/steps))^(2*h)) for i in 1:steps-1]
@@ -89,7 +114,7 @@ end
 
 function calc_sigma(avging_counts,motion)
 	h = 0.5
-	steps = 100
+	steps = 200
 	final_time = 1
 	motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avging_counts]
 	covar = [0.0 for i in 1:steps-1]
@@ -103,72 +128,6 @@ function calc_sigma(avging_counts,motion)
 	return mean(sigma0), std(sigma0)
 end
 
-function asset_price(n,t_fin,volat,corr,r,start_price)
-	dB = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
-	dW = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
-	asset = append!([start_price],[0.0 for i in 1:n])
-	times = [i*t_fin/n for i in 0:n]
-	for i in 2:n+1
-		if i%(0.05*n) == 0
-			println("H=",h,", ",100*(i-1)/n,"%",", Asset Price")
-		end
-		change_asset = r*asset[i-1]*(t_fin/n)+volat[i-1]*asset[i-1]*(corr*dW[i-1]+sqrt(1-corr^2)*dB[i-1])
-		asset[i] = asset[i-1] + change_asset
-	end
-	return times,asset
-end
-
-function get_imp_vol(asset_now,r,t_mat,volat,points)
-	range_strike = [0.7*asset_now + i*0.6*asset_now/points for i in 0:points-1]
-	implied_vol = [0.0 for i in 1:points]
-	for i in 1:points
-		option_price = blkprice(asset_now,range_strike[i],r,t_mat,volat)
-		implied_vol[i] = blsimpv(asset_now,range_strike[i],r,t_mat,option_price)
-	end
-	return range_strike,implied_vol
-end
-
-function get_volatility(h,t_steps,gam,m,t_fin,volat0)
-	v0 = log(volat0)
-	volat = append!([volat0],[0.0 for i in 1:t_steps-1])
-	base = lang_soln(h,t_steps,100,gam,m,t_fin,v0)
-	for i in 1:t_steps-1
-		if i%(0.05*t_steps) == 0
-			println("H=",h,", ",100*i/t_steps,"%",", Volatility")
-		end
-		volat[i+1] = exp((base[2][i+1]-base[2][i])/(t_fin/t_steps))
-	end
-	return base,volat
-end
-
-function read_hdf5_data(h,count,folder)
-	#cd("..")
-	#cd("$folder")
-	file = h5open("fBM-h-$h-$count.hdf5","r")
-	data = [read(file["values"],"deets_t"), read(file["values"],"deets_v")]
-	#cd("..")
-	return data
-end
-
-
-
-h = 0.75
-time_steps = 50
-gam = 1
-m = 1
-final_time = 10
-start_volat = 0.1
-v0 = log(start_volat)
-corr = 0.0
-r = 0.0
-price_start = 50.0
-base = lang_soln(h,time_steps,100,gam,m,final_time,v0)
-#volatility = get_volatility(h,time_steps,gam,m,final_time,start_volat)
-#asset = asset_price(time_steps,final_time,volatility[2],corr,r,price_start)
-#plot(asset[1],asset[2])
-plot(base[1],base[2],base[1],base[3])
-
-
 
 
 
@@ -179,18 +138,16 @@ sigs = [0.0 for i in 1:num]
 stds = [0.0 for i in 1:num]
 for i in 1:num
 	println(100*(i-1)/num,"%")
-	here = calc_sigma(50)
+	here = calc_sigma(50,1)
 	sigs[i] = here[1]
 	stds[i] = here[2]
 end
+plot(sigs)
 =#
-#s0 = 0.5580484388471367mean(sigs)
+#s0 = 0.5580484388471367#mean(sigs)
 #println("Sigma=",s0," +/- ",std(sigs))
 
-
-
-
-
+	
 
 
 #=  Figure of covariance
@@ -349,6 +306,46 @@ for i in 1:3
 	plot(frac_brown_wiki2(h_here,n_here,t_fin_here)[1],frac_brown(h_here,n_here,t_fin_here)[2],label="$h_here")
 end
 legend()
+=#
+
+#=
+function asset_price(n,t_fin,volat,corr,r,start_price)
+	dB = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
+	dW = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
+	asset = append!([start_price],[0.0 for i in 1:n])
+	times = [i*t_fin/n for i in 0:n]
+	for i in 2:n+1
+		if i%(0.05*n) == 0
+			println("H=",h,", ",100*(i-1)/n,"%",", Asset Price")
+		end
+		change_asset = r*asset[i-1]*(t_fin/n)+volat[i-1]*asset[i-1]*(corr*dW[i-1]+sqrt(1-corr^2)*dB[i-1])
+		asset[i] = asset[i-1] + change_asset
+	end
+	return times,asset
+end
+
+function get_imp_vol(asset_now,r,t_mat,volat,points)
+	range_strike = [0.7*asset_now + i*0.6*asset_now/points for i in 0:points-1]
+	implied_vol = [0.0 for i in 1:points]
+	for i in 1:points
+		option_price = blkprice(asset_now,range_strike[i],r,t_mat,volat)
+		implied_vol[i] = blsimpv(asset_now,range_strike[i],r,t_mat,option_price)
+	end
+	return range_strike,implied_vol
+end
+
+function get_volatility(h,t_steps,gam,m,t_fin,volat0)
+	v0 = log(volat0)
+	volat = append!([volat0],[0.0 for i in 1:t_steps-1])
+	base = lang_soln(h,t_steps,100,gam,m,t_fin,v0)
+	for i in 1:t_steps-1
+		if i%(0.05*t_steps) == 0
+			println("H=",h,", ",100*i/t_steps,"%",", Volatility")
+		end
+		volat[i+1] = exp((base[2][i+1]-base[2][i])/(t_fin/t_steps))
+	end
+	return base,volat
+end
 =#
 
 
