@@ -22,7 +22,7 @@ function frac_brown_wiki2(h,n,t_fin)
 	return times, full_bh
 end
 
-function read_hdf5_data(h,count,slice=false,len=1)
+function read_hdf5_data(h,count,slice=false,len=10000)
 	cd("fBM-data")
 	file = h5open("fBM-h-$h-$count.hdf5","r")
 	data = [read(file["values"],"deets_t"), read(file["values"],"deets_v")]
@@ -53,9 +53,9 @@ function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0,which=rand(1:20))
 	noise_term = noise(h,Int(t_steps*noise_steps),t_fin,which)
 	c_eta = eta(gam,h,1)
 	for i in 1:t_steps
-		if i%(0.05*t_steps) == 0
-			println("H=",h,", ",100*i/t_steps,"%",", Lang")
-		end
+		#if i%(0.05*t_steps) == 0
+		#	println("H=",h,", ",100*i/t_steps,"%",", Lang")
+		#end
 		noise_times = [ times[i] + j*t_fin/(t_steps*noise_steps) for j in 0:noise_steps ]
 		if i != 1
 			term_one[i] += term_one[i-1]
@@ -73,16 +73,31 @@ function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0,which=rand(1:20))
 	return times,term_one./m,term_two,full_position
 end
 
-h = 0.5
-lam = 3
-gamma_prime = 1
-a = 2
+#=  Look at volatility of price, approximation used is weird and likely wrong
+lam = 100
+beta = 100
 m = lam
-gam = lam*gamma_prime - a
-for i in 1:20
-	res = lang_soln(h,100,100,gam,m,1,0,i)
-	plot(res[1],res[4])
+volat = [0.0 for i in 1:10]
+as = [0.0 for i in 1:10]
+h = 0.5
+for i in 1:10
+	a = (i-1)*(10*1)/10
+	println("A=$a")
+	as[i] = a
+	gam = lam*beta - a
+	local_volat = 0
+	for k in 1:20
+		res = lang_soln(h,100,100,gam,m,1,0,k)
+		local_volat += (std(res[4])^2)/20
+	end
+	volat[i] = local_volat
 end
+d = [volat[i]*0.5*(beta-as[i]/lam)^2 for i in 1:10]
+d_th = [(lam*beta-as[i])/(lam^2) for i in 1:10]
+plot(as,d,as,d_th)
+
+# larger mass leads to less volatility but not linear relationship
+=#
 
 function calc_b2(h,avging_counts,motion,sigma0)
 	#steps = 100
@@ -96,21 +111,38 @@ function calc_b2(h,avging_counts,motion,sigma0)
 	return sum(exp_squared), th_exp_squared
 end
 
-function calc_covar(h,avging_counts,motion,sigma0)
-	final_time = 1
-	steps = 100
-	motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avging_counts]
+function calc_covar(h,avging_counts,motion,sigma0,interaction_time=100)
+	final_time = 9999
+	now_time = final_time
+	steps = 9999
+	#motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avging_counts]
 	covar = [0.0 for i in 1:steps-1]
 	coeff = (sigma0^2)*gamma(2-2*h)/(4*h*gamma(1.5-h)*gamma(0.5+h))
-	th_covar = [coeff*(final_time^(2*h)+(i*final_time/steps)^(2*h)-(abs(final_time-i*final_time/steps))^(2*h)) for i in 1:steps-1]
+	th_covar = [coeff*(now_time^(2*h)+(i*final_time/steps)^(2*h)-(abs(now_time-i*final_time/steps))^(2*h)) for i in 1:steps-1]
 	for j in 1:avging_counts
 		for i in 1:steps-1
-			covar[i] += motion[j][steps]*motion[j][i]/avging_counts
+			covar[i] += motion[j][interaction_time]*motion[j][i]/avging_counts
 		end
 	end
 
 	return covar,th_covar
 end
+
+# looking at covariance of noise which for h=0.5 should be dirac delta, trying to find max
+# of set to find on average what lambda^2 D should be
+h = 0.5
+motion_here = [noise(h,9999,1,i) for i in 1:20]
+#motion_here = [read_hdf5_data(h,i,true,100)[2] for i in 1:20]
+maxes = [0.0 for i in 1:5000]
+cross_vals = [0.0 for i in 1:5000]
+for i in 1:5000
+	println(i)
+	crossing = Int(1 + (i-1)*2)
+	cross_vals[i] = crossing
+	covars = calc_covar(h,20,motion_here,0.55,crossing)
+	maxes[i] = maximum(covars[1])
+end
+plot(cross_vals,maxes)
 
 function calc_sigma(avging_counts,motion)
 	h = 0.5
@@ -154,8 +186,9 @@ plot(sigs)
 h = 0.75
 steps = 100
 final_time = 1
-avg_counts = 200
-motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avg_counts]
+avg_counts = 20
+#motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avg_counts]
+motion = [read_hdf5_data(h,i,true,steps)[2] for i in 1:20]
 here = calc_covar(h,avg_counts,motion,s0)
 plot(1:steps-1,here[1],1:steps-1,here[2])
 =#
