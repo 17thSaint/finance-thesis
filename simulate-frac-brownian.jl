@@ -111,23 +111,23 @@ function calc_b2(h,avging_counts,motion,sigma0)
 	return sum(exp_squared), th_exp_squared
 end
 
-function calc_covar(h,avging_counts,motion,sigma0,interaction_time=100)
-	final_time = 9999
+function calc_covar(h,avging_counts,motion,interaction_time=10000,sigma0=0.55804)
+	final_time = 10000
 	now_time = final_time
-	steps = 9999
+	steps = 10000
 	#motion = [frac_brown_wiki2(h,steps,final_time)[2] for i in 1:avging_counts]
 	covar = [0.0 for i in 1:steps-1]
-	coeff = (sigma0^2)*gamma(2-2*h)/(4*h*gamma(1.5-h)*gamma(0.5+h))
-	th_covar = [coeff*(now_time^(2*h)+(i*final_time/steps)^(2*h)-(abs(now_time-i*final_time/steps))^(2*h)) for i in 1:steps-1]
+	#coeff = (sigma0^2)*gamma(2-2*h)/(4*h*gamma(1.5-h)*gamma(0.5+h))
+	#th_covar = [coeff*(now_time^(2*h)+(i*final_time/steps)^(2*h)-(abs(now_time-i*final_time/steps))^(2*h)) for i in 1:steps-1]
 	for j in 1:avging_counts
 		for i in 1:steps-1
 			covar[i] += motion[j][interaction_time]*motion[j][i]/avging_counts
 		end
 	end
 
-	return covar,th_covar
+	return covar#,th_covar
 end
-
+#=
 # looking at covariance of noise which for h=0.5 should be dirac delta, trying to find max
 # of set to find on average what lambda^2 D should be
 h = 0.5
@@ -143,7 +143,7 @@ for i in 1:5000
 	maxes[i] = maximum(covars[1])
 end
 plot(cross_vals,maxes)
-
+=#
 function calc_sigma(avging_counts,motion)
 	h = 0.5
 	steps = 200
