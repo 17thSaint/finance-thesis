@@ -92,42 +92,51 @@ end
 function main_here(tol,steps,step_size,h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0,a0)
 	println("Starting")
 	running_config = get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0)[2]
-	samp_freq = 1
+	samp_freq = 10
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
+	time_resids = fill(0.0,(time_told,Int(steps/samp_freq)))
 	index = 1
 	delta_t = t_fin/time_told
 	for i in 1:steps
 		for k in 2:time_told
 			movement = acc_rej_move(running_config,time_told,k,step_size,delta_t)
-		#if movement[2] > 0
-		#	println("Step $i: ", movement[2])
-		#end
 			running_config = movement[1]
 		end
-		#println("Found New Config",DateTime(now()))
-		#println("Checking to add Data",DateTime(now()))
+		
+		current_res = get_residuals(h,running_config,delta_t,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
+		
 		if i%samp_freq == 0
 			time_config[:,index] = [running_config[x] for x in 1:time_told]
+			time_resids[:,index] = [current_res[y] for y in 1:time_told]
 			index += 1
 		end
-		current_res = get_residuals(h,running_config,delta_t,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
-		check_tol = [ current_res[j] < tol for j in 2:time_told ]
-		if i%(steps*0.05) == 0
-			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res))
+		#=
+		check_triv = [ running_config[j] == 0.0 for j in 2:time_told ]
+		if all(check_triv)
+			println("Trivial Solution Found in $i Steps")
+			running_config = get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0)[2]
 		end
+		=#
+		check_tol = [ current_res[j] < tol for j in 2:time_told ]
 		if all(check_tol)
 			println("Solution Found in $i Steps")
-			return time_config
+			return running_config,time_config,time_resids,i
+		end
+	
+		if i%(steps*0.01) == 0
+			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res))
 		end
 		#println("Data Added",DateTime(now()))
 	end
 	
-	#println("No Solution")
-	return time_config
+	println("No Solution")
+	return time_config,time_resids
 end
 
+# for step_size = 0.0001, tough to get avg tol below 0.135
+
 tol = 0.1
-mc_steps = 1000
+mc_steps = 10000
 step_size = 0.00001
 h = 0.75
 final_time = 10
@@ -138,12 +147,14 @@ a = 0.5
 x0 = 10.0
 v0 = 0.0
 a0 = 0.0
-white_noise = noise(0.5,100*time_steps,final_time,1).*fluc_dissp_coeffs("white",beta,lambda,a,h)
-colored_noise = noise(h,100*time_steps,final_time,2).*fluc_dissp_coeffs("color",beta,lambda,a,h)
+#white_noise = noise(0.5,100*time_steps,final_time,1).*fluc_dissp_coeffs("white",beta,lambda,a,h)
+#colored_noise = noise(h,100*time_steps,final_time,2).*fluc_dissp_coeffs("color",beta,lambda,a,h)
 #first_try = get_first_guess(h,time_steps,final_time,beta,lambda,a,white_noise,colored_noise,x0,v0)
 
-letsgo = main_here(tol,mc_steps,step_size,h,time_steps,final_time,beta,lambda,a,white_noise,colored_noise,x0,v0,a0)
+#letsgo = main_here(tol,mc_steps,step_size,h,time_steps,final_time,beta,lambda,a,white_noise,colored_noise,x0,v0,a0)
 
-
+for i in 1:Int(round(letsgo[4]))
+	plot(letsgo[3][:,i])
+end
 
 "fin"
