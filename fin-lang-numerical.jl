@@ -1,6 +1,6 @@
 include("simulate-frac-brownian.jl")
 
-function fluc_dissp_coeffs(which,beta,lambda,a,h,kBT=1,sigma0=0.55804)
+function fluc_dissp_coeffs(which,beta,lambda,a,h,kBT=1,sigma0=1) #sigma0=0.55804
 	if which == "white"
 		whi_coeff = 2*beta*lambda*kBT/(sigma0^2)
 		return sqrt(whi_coeff)
@@ -21,13 +21,24 @@ function get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noi
 		#println("Getting First Guess: ",100*i/time_steps," %")
 		time_now = i*t_fin/time_steps
 		times[i] = time_now
-		second_term[i] = v0*(1-exp(-beta*time_now))/beta + x0
+		if beta == 0
+			second_term[i] = v0*time_now + x0
+		else
+			second_term[i] = v0*(1-exp(-beta*time_now))/beta + x0
+		end
 		for j in 1:100
 			local_time_change = t_fin/time_steps/100
 			noise_time = time_now - (101-j)*local_time_change
-			noises = white_noise[100*(i-1)+j] - colored_noise[100*(i-1)+j]
-			exp_part = 1 - exp(-beta*(time_now-noise_time))
-			first_term[i] += noises*exp_part/(beta*lambda)
+			#noises = white_noise[100*(i-1)+j] - colored_noise[100*(i-1)+j]
+			noises = white_noise[100*i-j+1] - colored_noise[100*i-j+1]
+			if beta == 0
+				#exp_part = (time_now-noise_time)/lambda
+				exp_part = noise_time/lambda
+			else
+				#exp_part = (1 - exp(-beta*(time_now-noise_time)))/(beta*lambda)
+				exp_part = (1 - exp(-beta*noise_time))/(beta*lambda)
+			end
+			first_term[i] += noises*exp_part
 		end
 	end
 	full_rez = append!([x0],first_term + second_term)
@@ -65,7 +76,7 @@ function get_residuals(h,config,delta_t,white_noise,colored_noise,beta,lambda,a,
 		end
 	end
 	fract_deriv = append!([0.0],fract_deriv)
-	return abs.(g_stuff[1]-a.*fract_deriv)
+	return abs.(g_stuff[1]+a.*fract_deriv)
 end
 
 function move_position(num_times,chosen,step_size)
@@ -74,7 +85,7 @@ function move_position(num_times,chosen,step_size)
 	return shift_matrix
 end
 
-function acc_rej_move(config,num_times,chosen,step_size,delta_t)
+function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,white_noise,colored_noise)
 	start_resids = get_residuals(h,config,delta_t,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
 	shift_matrix = move_position(num_times,chosen,step_size)
 	new_resids = get_residuals(h,config+shift_matrix,delta_t,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
@@ -99,7 +110,7 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,beta,lambda,a,white_noi
 	delta_t = t_fin/time_told
 	for i in 1:steps
 		for k in 2:time_told
-			movement = acc_rej_move(running_config,time_told,k,step_size,delta_t)
+			movement = acc_rej_move(running_config,h,time_told,k,step_size,delta_t,white_noise,colored_noise)
 			running_config = movement[1]
 		end
 		
@@ -136,25 +147,46 @@ end
 # for step_size = 0.0001, tough to get avg tol below 0.135
 
 tol = 0.1
-mc_steps = 10000
+mc_steps = 3000
 step_size = 0.00001
-h = 0.75
 final_time = 10
-time_steps = 100
-beta = 1
+time_steps = 10
+beta = 0
 lambda = 1
-a = 0.5
-x0 = 10.0
+a = 1
+x0 = 0.0
 v0 = 0.0
 a0 = 0.0
+
+h = 0.5
+
+
 #white_noise = noise(0.5,100*time_steps,final_time,1).*fluc_dissp_coeffs("white",beta,lambda,a,h)
-#colored_noise = noise(h,100*time_steps,final_time,2).*fluc_dissp_coeffs("color",beta,lambda,a,h)
-#first_try = get_first_guess(h,time_steps,final_time,beta,lambda,a,white_noise,colored_noise,x0,v0)
-
+#colored_noise = -noise(h,100*time_steps,final_time,2).*fluc_dissp_coeffs("color",beta,lambda,a,h)
 #letsgo = main_here(tol,mc_steps,step_size,h,time_steps,final_time,beta,lambda,a,white_noise,colored_noise,x0,v0,a0)
+#plot(letsgo[1])
 
-for i in 1:Int(round(letsgo[4]))
-	plot(letsgo[3][:,i])
+#test_first = get_first_guess(h,time_steps,final_time,beta,lambda,a,white_noise,colored_noise,x0,v0)
+#plot(test_first[1],test_first[2])
+
+analytic_soln = lang_soln(h,time_steps,100,a,lambda,final_time,v0,2)
+
+
+#other_resids = get_residuals(h,analytic_soln[4],final_time/time_steps,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
+#plot(other_resids)
+
+#=
+for i in 1:Int(round(letsgo[4]/100))
+	#plot(letsgo[3][:,i*10])
+	plot(letsgo[2][:,i*10])
 end
+=#
+
+
+
+
+
+
+
 
 "fin"
