@@ -33,6 +33,7 @@ function read_hdf5_data(h,count,slice=false,len=10000)
 	return data
 end
 
+# gets noise from previous stored data file or makes new if asked
 function noise(h,n,t_fin,which=rand(1:20),make_new=false)
 	fBM = read_hdf5_data(h,which,true,n+1)[2]
 	if make_new
@@ -41,11 +42,17 @@ function noise(h,n,t_fin,which=rand(1:20),make_new=false)
 	return [t_fin*(fBM[i+1]-fBM[i])/n for i in 1:n]
 end
 
+# fluctuation dissipation coefficient
 function eta(gam,h,kBT)
 	#kBT = 1.0
 	return sqrt(2*gam*kBT*gamma(1.5-h)*gamma(0.5+h)/(gamma(2*h)*gamma(2-2*h)))
 end
 
+# returns calculated solution to equation 
+# m*d^2 x/dt^2 + gamma*D^(alpha) [x(t)] = f_H
+# x(t) = 1/m * Convolution(f_H(t), t*E_(2H,2) (-gamma/m * t^(2H))) + v0*t*E_(2H,2) (-gamma/m * t^(2H))
+# this assumes that x0 = 0
+# uses trapezoid rule for convolution integral
 function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0,which=rand(1:20))
 	times = [i*t_fin/t_steps for i in 0:t_steps]
 	term_one = [0.0 for i in 1:t_steps]

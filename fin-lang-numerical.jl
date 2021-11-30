@@ -1,6 +1,7 @@
 include("simulate-frac-brownian.jl")
 
-function fluc_dissp_coeffs(which,beta,lambda,a,h,kBT=1,sigma0=1) #sigma0=0.55804
+
+function fluc_dissp_coeffs(which,beta,lambda,a,h,kBT=1,sigma0=1)
 	if which == "white"
 		whi_coeff = 2*beta*lambda*kBT/(sigma0^2)
 		return sqrt(whi_coeff)
@@ -12,10 +13,14 @@ function fluc_dissp_coeffs(which,beta,lambda,a,h,kBT=1,sigma0=1) #sigma0=0.55804
 	end
 end
 
+# this function calculates the first guess which is the solution to the equation without the fractional derivative
+# lambda*d^2 x/ dt^2 + beta*lambda*dx/dt = eta - xi_H
+# solution is x(t) = 1/beta*lambda * Convolution(eta - xi_H, 1-exp(-beta*t)) + v0/beta * (1-exp(-beta*t)) + x0
+# if beta = 0, I did a limiting case
 function get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0)
 	time_steps = time_told-1
 	second_term = [0.0 for i in 1:time_steps]
-	first_term = [0.0 for i in 1:time_steps]
+	first_term = [0.0 for i in 1:time_steps]  # convolution part
 	times = [0.0 for i in 1:time_steps]
 	for i in 1:time_steps
 		#println("Getting First Guess: ",100*i/time_steps," %")
@@ -26,8 +31,9 @@ function get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noi
 		else
 			second_term[i] = v0*(1-exp(-beta*time_now))/beta + x0
 		end
+		# 100 noise steps for every single time step
 		noise_times = append!([0.0],[ l*t_fin/time_steps + k*t_fin/(time_steps*100) for l in 0:i-1 for k in 1:100])
-		for j in 1:length(noise_times)-1
+		for j in 1:length(noise_times)-1  # calculates convolution using trapezoid method
 			left_time = noise_times[j]
 			right_time = noise_times[j+1]
 			
@@ -53,20 +59,8 @@ function get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noi
 	return times,full_rez
 end
 
-#=
-			noises_right = white_noise[length(noise_times)-j] - colored_noise[length(noise_times)-j]
-			if j == length(noise_times)-1
-				noises_left = white_noise[1] - colored_noise[1]
-			else
-				noises_left = white_noise[length(noise_times)-1-j] - colored_noise[length(noise_times)-1-j]
-			end
-			
-#exp_part_left = (time_now-right_time)/lambda
-#exp_part_right = (time_now-left_time)/lambda
-#exp_part_left = (1 - exp(-beta*(time_now-right_time)))/(beta*lambda)
-#exp_part_right = (1 - exp(-beta*(time_now-left_time)))/(beta*lambda)				
-=#
 
+# g(t) is the SDE without the fractional derivative term
 function get_goft(config,delta_t,white_noise,colored_noise,beta,lambda,x0,v0,a0)
 	#sliced_white = append!([white_noise[1]],[ white_noise[i*100] for i in 1:length(config)-1])
 	#sliced_color = append!([colored_noise[1]],[ colored_noise[i*100] for i in 1:length(config)-1])
@@ -78,8 +72,9 @@ function get_goft(config,delta_t,white_noise,colored_noise,beta,lambda,x0,v0,a0)
 	return g_of_t,velocity,accel
 end
 
+
+# residuals = magnitude of g(t)-D^alpha [x(t)] where x(t) is current guess
 function get_residuals(h,config,delta_t,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
-	#println("Getting g(t)")
 	g_stuff = get_goft(config,delta_t,white_noise,colored_noise,beta,lambda,x0,v0,a0)
 	steps = length(config)
 	final_time = steps*delta_t
@@ -88,8 +83,8 @@ function get_residuals(h,config,delta_t,white_noise,colored_noise,beta,lambda,a,
 		top_time_now = i*delta_t
 		percent = 100*i/(steps-1)
 		#println("Calculating Fractional Derivative: $percent %")
-		for j in 1:i
-			if j == i
+		for j in 1:i  # using trapezoid method again for integration 
+			if j == i	# doing a cutoff for t=0 which explodes
 				right = g_stuff[2][j+1]*(top_time_now-delta_t*j/2)^(2*h-2)
 			else
 				right = g_stuff[2][j+1]*(top_time_now-delta_t*j)^(2*h-2)
@@ -102,12 +97,18 @@ function get_residuals(h,config,delta_t,white_noise,colored_noise,beta,lambda,a,
 	return abs.(g_stuff[1]-a.*fract_deriv)
 end
 
+# the configuration is a matrix so a shift for a single time is taken to be a matrix of all zeros
+# except for the time we want to move
+# this functions returns this single time shift matrix
+# either up/down, then rand(Float64) is number between 0 and 1 so step_size is maximum move
 function move_position(num_times,chosen,step_size)
 	shift_matrix = [0.0 for i = 1:num_times]
 	shift_matrix[chosen] += rand(-1:2:1)*rand(Float64)*step_size
 	return shift_matrix
 end
 
+# calculates the residuals before and after the move and uses Metropolis method 
+# to see if the move will be accepted
 function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,white_noise,colored_noise)
 	start_resids = get_residuals(h,config,delta_t,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
 	shift_matrix = move_position(num_times,chosen,step_size)
@@ -125,13 +126,16 @@ end
 
 function main_here(tol,steps,step_size,h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0,a0)
 	println("Starting")
+	# getting first config from first guess
 	running_config = get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0)[2]
+	# only save configuration data for every 10 attempted movements
 	samp_freq = 10
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
 	time_resids = fill(0.0,(time_told,Int(steps/samp_freq)))
 	index = 1
 	delta_t = t_fin/time_told
 	for i in 1:steps
+		# each MC time step every time point has attempted move, except starting point
 		for k in 2:time_told
 			movement = acc_rej_move(running_config,h,time_told,k,step_size,delta_t,white_noise,colored_noise)
 			running_config = movement[1]
@@ -139,28 +143,24 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,beta,lambda,a,white_noi
 		
 		current_res = get_residuals(h,running_config,delta_t,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
 		
+		# saving data every 10 steps
 		if i%samp_freq == 0
 			time_config[:,index] = [running_config[x] for x in 1:time_told]
 			time_resids[:,index] = [current_res[y] for y in 1:time_told]
 			index += 1
 		end
-		#=
-		check_triv = [ running_config[j] == 0.0 for j in 2:time_told ]
-		if all(check_triv)
-			println("Trivial Solution Found in $i Steps")
-			running_config = get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0)[2]
-		end
-		=#
+		
+		# if every time point has residuals less than tolerance then solution is found
 		check_tol = [ current_res[j] < tol for j in 2:time_told ]
 		if all(check_tol)
 			println("Solution Found in $i Steps")
 			return running_config,time_config,time_resids,i
 		end
-	
+		
+		# interface data
 		if i%(steps*0.01) == 0
 			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res))
 		end
-		#println("Data Added",DateTime(now()))
 	end
 	
 	println("No Solution")
@@ -183,7 +183,7 @@ a0 = 0.0
 
 h = 0.5
 
-
+# using previously run noise data as the input
 white_noise = noise(0.5,100*time_steps,final_time,1).*fluc_dissp_coeffs("white",beta,lambda,a,h)
 colored_noise = noise(h,100*time_steps,final_time,2).*fluc_dissp_coeffs("color",beta,lambda,a,h)
 #letsgo = main_here(tol,mc_steps,step_size,h,time_steps,final_time,beta,lambda,a,white_noise,colored_noise,x0,v0,a0)
@@ -196,17 +196,6 @@ colored_noise = noise(h,100*time_steps,final_time,2).*fluc_dissp_coeffs("color",
 analytic_soln = lang_soln(h,time_steps,100,beta*lambda,lambda,final_time,v0,1)
 
 
-#=
-for i in 1:1
-	plot(letsgo[1])
-	plot(analytic_soln[4])
-end
-=#
-#for i in 1:10
-#	plot(letsgo[1][:,Int(i*mc_steps*0.01)])
-#end
-
-#goft = get_goft(analytic_soln[4],final_time/time_steps,white_noise,colored_noise,beta,lambda,x0,v0,a0)
 
 other_resids = get_residuals(h,analytic_soln[4],final_time/time_steps,white_noise,colored_noise,beta,lambda,a,x0,v0,a0)
 percent_resids = other_resids#./analytic_soln[4]
@@ -223,6 +212,27 @@ end
 
 
 
+#=
+			noises_right = white_noise[length(noise_times)-j] - colored_noise[length(noise_times)-j]
+			if j == length(noise_times)-1
+				noises_left = white_noise[1] - colored_noise[1]
+			else
+				noises_left = white_noise[length(noise_times)-1-j] - colored_noise[length(noise_times)-1-j]
+			end
+			
+#exp_part_left = (time_now-right_time)/lambda
+#exp_part_right = (time_now-left_time)/lambda
+#exp_part_left = (1 - exp(-beta*(time_now-right_time)))/(beta*lambda)
+#exp_part_right = (1 - exp(-beta*(time_now-left_time)))/(beta*lambda)				
+=#
+
+#=
+		check_triv = [ running_config[j] == 0.0 for j in 2:time_told ]
+		if all(check_triv)
+			println("Trivial Solution Found in $i Steps")
+			running_config = get_first_guess(h,time_told,t_fin,beta,lambda,a,white_noise,colored_noise,x0,v0)[2]
+		end
+		=#
 
 
 
