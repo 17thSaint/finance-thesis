@@ -10,7 +10,7 @@ function frac_brown_wiki2(h,n,t_fin)
 			println("H=",h,", ",100*j/n,"%",", Noise")
 		end
 		for i in 0:j-1
-			function integrand(s)
+			function integrand(s::Float64)
 				return (((times[j+1]-s)^(h-0.5))/gamma(h+0.5))*_₂F₁(h-0.5,0.5-h,h+0.5,1-times[j+1]/s)
 			end
 			part = hquadrature(integrand,times[i+1],times[i+2])[1]*dB[i+1]*n/t_fin
@@ -20,6 +20,23 @@ function frac_brown_wiki2(h,n,t_fin)
 	end
 	full_bh = append!([0.0],bh)
 	return times, full_bh
+end
+
+function auto_correlation(energies, delta_t)
+    average_energy = mean(energies)
+    
+    points = Int(floor(length(energies)-delta_t))
+    
+    energy_fluctuations = energies.-average_energy
+    
+    autocorrelation_top = [0.0 for i in 1:points]
+    autocorrelation_bottom = mean(energy_fluctuations.^2)
+    
+    for i in 1:points
+        autocorrelation_top[i] = energy_fluctuations[i]*energy_fluctuations[i+delta_t]
+    end
+    
+    return (mean(autocorrelation_top)/autocorrelation_bottom)
 end
 
 function read_hdf5_data(h,count,slice=false,len=10000)
@@ -57,12 +74,12 @@ function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0,which=rand(1:20))
 	times = [i*t_fin/t_steps for i in 0:t_steps]
 	term_one = [0.0 for i in 1:t_steps]
 	term_two = [0.0 for i in 1:t_steps]
-	noise_term = noise(h,Int(t_steps*noise_steps),t_fin,which)
-	c_eta = eta(gam,h,1)
+	c_eta = eta(gam,h,1.0)
+	noise_term = c_eta.*noise(h,Int(t_steps*noise_steps),t_fin,which)
 	for i in 1:t_steps
-		#if i%(0.05*t_steps) == 0
-		#	println("H=",h,", ",100*i/t_steps,"%",", Lang")
-		#end
+		if i%(0.05*t_steps) == 0
+			println("H=",h,", ",100*i/t_steps,"%",", Lang")
+		end
 		noise_times = append!([0.0],[ l*t_fin/t_steps + j*t_fin/(t_steps*noise_steps) for l in 0:i-1 for j in 1:noise_steps])
 		for k in 1:length(noise_times)-1
 			left_time = noise_times[k]
@@ -87,9 +104,48 @@ function lang_soln(h,t_steps,noise_steps,gam,m,t_fin,v0,which=rand(1:20))
 		
 	end
 	full_position = append!([0.0],term_one./m + term_two)
-	return times,term_one./m,term_two,full_position
+	return times,full_position
 end
 
+
+
+
+
+time_steps = 1000
+gam = 1.0
+mass = 1.0
+final_time = 10
+v0 = 0.0
+h = 0.5
+#solns = [lang_soln(i,time_steps,10,gam,mass,final_time,v0,2) for i in [0.3,0.5,0.75]]
+#gen_noise = [noise(i,Int(time_steps*100),final_time,1)*eta(gam,i,1.0) for i in [0.3,0.5,0.75]]
+
+soln = lang_soln(h,time_steps,100,gam,mass,final_time,v0,2)
+
+
+#=
+function pair_covar(motion_1,motion_2,count_inter_times)
+	len = length(motion_1)
+	covar = [[0.0 for i in 1:len] for j in 1:count_inter_times]
+	for j in 1:count_inter_times
+		interaction_time = Int(j*len/count_inter_times)
+		for i in 1:len
+			covar[j][i] = motion_1[interaction_time]*motion_2[i]
+		end
+	end
+	return covar
+end
+len = length(solns[1][2])-1
+corrs = [0.0 for i in 1:Int(0.75*len)-1]
+dts = [1+(i-1)*1 for i in 1:Int(0.75*len)-1]
+for i in 1:Int(0.75*len)-1
+	println(i/(Int(0.75*len)-1))
+	#corrs[i] = cor(solns[1][2][1+(i-1)*10:i*10],solns[1][2][92:101])
+	#corrs[i] = cor(gen_noise[1][1+(i-1)*1000:i*1000],gen_noise[1][9001:10000])
+	corrs[i] = auto_correlation(solns[1][2],dts[i])
+end
+plot(dts,corrs)
+=#
 #=	This is the if statement loop for associativity of convolution
 ex_mit = lang_soln(h,time_steps,100,a,lambda,final_time,v0,"mitag",2)
 ex_noise = lang_soln(h,time_steps,100,a,lambda,final_time,v0,"blah",2)
