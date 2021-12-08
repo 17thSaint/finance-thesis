@@ -109,18 +109,17 @@ end
 
 
 
-
-
-time_steps = 1000
+time_steps = 100
 gam = 1.0
 mass = 1.0
 final_time = 10
 v0 = 0.0
-h = 0.5
+
 #solns = [lang_soln(i,time_steps,10,gam,mass,final_time,v0,2) for i in [0.3,0.5,0.75]]
 #gen_noise = [noise(i,Int(time_steps*100),final_time,1)*eta(gam,i,1.0) for i in [0.3,0.5,0.75]]
 
-soln = lang_soln(h,time_steps,100,gam,mass,final_time,v0,2)
+
+noises = [eta(gam,i,1.0).*noise(i,Int(time_steps*100),final_time,2) for i in [0.3,0.4,0.5,0.6,0.75]]
 
 
 #=
@@ -135,17 +134,29 @@ function pair_covar(motion_1,motion_2,count_inter_times)
 	end
 	return covar
 end
-len = length(solns[1][2])-1
-corrs = [0.0 for i in 1:Int(0.75*len)-1]
-dts = [1+(i-1)*1 for i in 1:Int(0.75*len)-1]
-for i in 1:Int(0.75*len)-1
-	println(i/(Int(0.75*len)-1))
+=#
+
+
+len = length(noises[3])
+percent = 0.01
+hs = [0.3,0.4,0.5,0.6,0.75]
+corrs = [[0.0 for i in 1:Int(percent*len)-1] for j in 1:5]
+dts = [1+(i-1)*1 for i in 1:Int(percent*len)-1]
+for j in 1:5
+	hval = hs[j]
+	println(j)
+	for i in 1:Int(percent*len)-1
+	#println(i/(Int(0.5*len)-1))
 	#corrs[i] = cor(solns[1][2][1+(i-1)*10:i*10],solns[1][2][92:101])
 	#corrs[i] = cor(gen_noise[1][1+(i-1)*1000:i*1000],gen_noise[1][9001:10000])
-	corrs[i] = auto_correlation(solns[1][2],dts[i])
+		corrs[j][i] = auto_correlation(noises[j],dts[i])
+	end
+	plot(dts,corrs[j],label="H=$hval")
 end
-plot(dts,corrs)
-=#
+legend()
+
+
+
 #=	This is the if statement loop for associativity of convolution
 ex_mit = lang_soln(h,time_steps,100,a,lambda,final_time,v0,"mitag",2)
 ex_noise = lang_soln(h,time_steps,100,a,lambda,final_time,v0,"blah",2)
