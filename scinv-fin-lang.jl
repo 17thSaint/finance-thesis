@@ -50,12 +50,12 @@ function lang_soln(h,told_steps,noise_steps,noise,gam,m,t_fin,v0,which=rand(1:20
 	term_two = [0.0 for i in 1:t_steps]
 	c_eta = eta(gam,h,1.0)
 	scaled_coeffs = get_scale_inv_vals(h,m,gam)
-	noise_term = noise#c_eta.*get_noise(h,Int(t_steps*noise_steps),t_fin,which)
+	noise_term = [ noise[i*noise_steps+1] for i in 1:t_steps]#noise#c_eta.*get_noise(h,Int(t_steps*noise_steps),t_fin,which)
 	for i in 1:t_steps
 		if i%(0.05*t_steps) == 0
 			println("H=",h,", ",100*i/t_steps,"%",", Lang")
 		end
-		noise_times = append!([0.0],[ l*t_fin/t_steps + j*t_fin/(t_steps*noise_steps) for l in 0:i-1 for j in 1:noise_steps])
+		noise_times = append!([0.0],[ l*t_fin/t_steps + j*t_fin/(t_steps*1) for l in 0:i-1 for j in 1:1])
 		for k in 1:length(noise_times)-1
 			left_time = noise_times[k]
 			right_time = noise_times[k+1]
@@ -133,28 +133,26 @@ function get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
 	return g_of_t,velocity,accel
 end
 
+function get_fractderiv(h,delta_t,steps,og_func,noise_steps)
+	fract_deriv = [0.0 for i in 1:steps-1]
+	for i in 1:steps-1
+		for j in 0:noise_steps*i
+			func_here = og_func[noise_steps*i-j+1]
+			fact_j = exp(sum([log(i) for i in 1:j]))
+			binom_part = gamma(3-2*h)/(fact_j*gamma(3-2*h-j))
+			fract_deriv[i] += ((-1)^(j))*binom_part*func_here/(delta_t/noise_steps)^(2-2*h)
+		end
+	end
+	return fract_deriv
+end
+
 function get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)
 	g_stuff = get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
 	steps = length(config)
 	final_time = steps*delta_t
-	fract_deriv = [0.0 for i in 1:steps-2]
-	for i in 1:steps-2
-		top_time_now = (i+1)*delta_t
-		if i%((steps-2)*0.01) == 0
-			println("Getting Residuals: ",100*i/(steps-2)," %")
-		end
-		for j in 1:i  # using trapezoid method again for integration 
-			if j == i	# doing a cutoff for t=0 which explodes
-				right = g_stuff[2][j+1]*(top_time_now-delta_t*j*0.99)^(2*h-2)
-			else
-				right = g_stuff[2][j+1]*(top_time_now-delta_t*j)^(2*h-2)
-			end
-			left = g_stuff[2][j]*(top_time_now-delta_t*(j-1))^(2*h-2)
-			fract_deriv[i] += 0.5*(left + right)*delta_t/gamma(2*h-1)
-		end
-	end
+	fract_deriv = [get_fractderiv(h,delta_t,steps,config,noise_steps)[i] for i in 2:steps-1]
 	scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
-	coeff = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))/10
+	coeff = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
 	return abs.(g_stuff[1]+coeff.*fract_deriv),g_stuff[1],coeff.*fract_deriv
 end
 
@@ -226,13 +224,13 @@ end
 
 
 final_time = 10
-time_steps = 100
+time_steps = 10
 lambda = 1.0
 gam = 1.0
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
-noise_steps = 100
+noise_steps = 1
 h = 0.3
 tol = 0.001
 mc_steps = 100
@@ -241,11 +239,9 @@ metro_val = 1.0001
 
 noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
 #num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
-#exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)[2]
-first = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)[2]
-gt = get_goft(h,first,final_time/time_steps,noise,noise_steps,lambda,gam)[1]
-#resids_exact = get_resids(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)
-plot(gt)
+exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)[2]
+resids_exact = get_resids(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)
+plot(resids_exact[1])
 
 
 "fin"
