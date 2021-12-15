@@ -89,6 +89,8 @@ function get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)
 	second_term = [0.0 for i in 1:time_steps]
 	first_term = [0.0 for i in 1:time_steps]  # convolution part
 	times = [0.0 for i in 1:time_steps]
+	sliced_noise = [ noise[i*noise_steps+1] for i in 0:time_steps]
+	noise_steps_local = 1
 	scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
 	first_coeff_scaled = lambda*scaled_coeffs[2]/(scaled_coeffs[1]^2)
 	for i in 1:time_steps
@@ -98,14 +100,14 @@ function get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)
 		time_now = i*t_fin/time_told
 		times[i] = time_now
 		second_term[i] = v0*time_now + x0
-		noise_times = append!([0.0],[ l*t_fin/time_told + k*t_fin/(time_told*noise_steps) for l in 0:i-1 for k in 1:noise_steps])
+		noise_times = append!([0.0],[ l*t_fin/time_told + k*t_fin/(time_told*noise_steps_local) for l in 0:i-1 for k in 1:noise_steps_local])
 		#println(noise_times)
 		for j in 1:length(noise_times)-1
 			left_time = noise_times[j]
 			right_time = noise_times[j+1]
 			
-			noises_right = noise[j+1]
-			noises_left = noise[j]
+			noises_right = sliced_noise[j+1]
+			noises_left = sliced_noise[j]
 			
 			exp_part_left = (time_now - left_time)/first_coeff_scaled
 			exp_part_right = (time_now - right_time)/first_coeff_scaled
@@ -121,19 +123,18 @@ function get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)
 end
 
 # g(t) is the SDE without the fractional derivative term
-function get_goft(h,config,delta_t,noise,lambda,gam)
-	sliced_noise = [ noise[i] for i in 2:length(config)-1]
+function get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
+	sliced_noise = [ noise[i*noise_steps+1] for i in 1:length(config)-2]
 	velocity = [ (config[i+1] - config[i])/delta_t for i in 1:length(config)-1 ]
 	accel = [ (velocity[i+1] - velocity[i])/delta_t for i in 1:length(velocity)-1 ]
-	#accel[2] *= 2
 	scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
 	first_coeff_scaled = lambda*scaled_coeffs[2]/(scaled_coeffs[1]^2)
 	g_of_t = first_coeff_scaled.*accel - sliced_noise
 	return g_of_t,velocity,accel
 end
 
-function get_resids(h,config,delta_t,noise,lambda,gam)
-	g_stuff = get_goft(h,config,delta_t,noise,lambda,gam)
+function get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)
+	g_stuff = get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
 	steps = length(config)
 	final_time = steps*delta_t
 	fract_deriv = [0.0 for i in 1:steps-2]
@@ -144,7 +145,7 @@ function get_resids(h,config,delta_t,noise,lambda,gam)
 		end
 		for j in 1:i  # using trapezoid method again for integration 
 			if j == i	# doing a cutoff for t=0 which explodes
-				right = g_stuff[2][j+1]*(top_time_now-delta_t*j*0.9)^(2*h-2)
+				right = g_stuff[2][j+1]*(top_time_now-delta_t*j*0.99)^(2*h-2)
 			else
 				right = g_stuff[2][j+1]*(top_time_now-delta_t*j)^(2*h-2)
 			end
@@ -153,8 +154,8 @@ function get_resids(h,config,delta_t,noise,lambda,gam)
 		end
 	end
 	scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
-	coeff = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
-	return abs.(g_stuff[1]+coeff.*fract_deriv)
+	coeff = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))/10
+	return abs.(g_stuff[1]+coeff.*fract_deriv),g_stuff[1],coeff.*fract_deriv
 end
 
 function move_position(num_times,chosen,step_size)
@@ -163,10 +164,10 @@ function move_position(num_times,chosen,step_size)
 	return shift_matrix
 end
 
-function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,noise,top_val)
-	start_resids = get_resids(h,config,delta_t,noise,lambda,gam)
+function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,noise,noise_steps,top_val)
+	start_resids = get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)[1]
 	shift_matrix = move_position(num_times,chosen,step_size)
-	new_resids = get_resids(h,config+shift_matrix,delta_t,noise,lambda,gam)
+	new_resids = get_resids(h,config+shift_matrix,delta_t,noise,noise_steps,lambda,gam)[1]
 	exp_diff = exp.(new_resids - start_resids)
 	checking = [ exp_diff[i] <= top_val for i in 1:length(config)-2 ] #1.000001
 	if all(checking)
@@ -178,7 +179,7 @@ function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,noise,top_val)
 	return "Acceptance Calculation Error"
 end
 
-function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,x0,v0,top_val)
+function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_steps,x0,v0,top_val)
 	println("Starting")
 	# getting first config from first guess
 	running_config = get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
@@ -191,11 +192,11 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,x0,v0,
 	for i in 1:steps
 		# each MC time step every time point has attempted move, except starting point
 		for k in 2:time_told
-			movement = acc_rej_move(running_config,h,time_told,k,step_size,delta_t,noise,top_val)
+			movement = acc_rej_move(running_config,h,time_told,k,step_size,delta_t,noise,noise_steps,top_val)
 			running_config = movement[1]
 		end
 		
-		current_res = get_resids(h,running_config,delta_t,noise,lambda,gam)
+		current_res = get_resids(h,running_config,delta_t,noise,lambda,gam)[1]
 		
 		# saving data every 10 steps
 		if i%samp_freq == 0
@@ -225,27 +226,26 @@ end
 
 
 final_time = 10
-time_steps = 10
+time_steps = 100
 lambda = 1.0
 gam = 1.0
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
-noise_steps = 1
-h = 0.5
+noise_steps = 100
+h = 0.3
 tol = 0.001
 mc_steps = 100
 step_size = 1
 metro_val = 1.0001
 
 noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
-#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,x0,v0,metro_val) ./ 10.0
-exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)[2]
-resids_exact = get_resids(h,exact,final_time/time_steps,noise,lambda,gam)
-plot(resids_exact)
-
-
-
+#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
+#exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)[2]
+first = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)[2]
+gt = get_goft(h,first,final_time/time_steps,noise,noise_steps,lambda,gam)[1]
+#resids_exact = get_resids(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)
+plot(gt)
 
 
 "fin"
