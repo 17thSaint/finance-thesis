@@ -1,4 +1,4 @@
-#using SpecialFunctions,PyPlot,CurveFit
+#using SpecialFunctions,PyPlot,CurveFit,MittagLeffler
 
 function get_fractderiv(h,delta_t,steps,og_func,noise_steps,lim_val=0.1)
 	fract_deriv = [0.0 for i in 1:steps-1]
@@ -16,24 +16,33 @@ end
 
 time_steps = 10
 dt = 1/time_steps
-h = 0.3
-alpha = 2-2*h
+alpha = 0.1
+h = 0.5*(2 - alpha)
 times = [i*dt for i in 1:time_steps-1]
 
-noises = [10]
+noise_steps = 5
 #power_vals = [0.0 for j in 1:length(hs)]
-pow = 2
+#pow = 1
+#=
 for j in 1:length(noises)
 	noise_steps = noises[j]
 	#noise_times = [i*dt/noise_steps for i in 1:time_steps*noise_steps]
 	og_func = [(t*dt/noise_steps)^pow for t in 1:time_steps*noise_steps]
 	rezz = get_fractderiv(h,dt,time_steps,og_func,noise_steps)
-	plot(times,rezz,label="Steps=$noise_steps")
+	plot(times,rezz)
 	#plot(noise_times,og_func,label="Steps=$noise_steps")
 end
-theory = [(factorial(pow)*times[i]^(pow-alpha))/gamma(pow+1-alpha) for i in 1:time_steps-1]
-plot(times,theory,label="Theory")
+=#
+#og_func = [(t*dt/noise_steps)^pow for t in 1:time_steps*noise_steps]
+og_func = [sum([((t*dt/noise_steps)^i)/factorial(i) for i in 1:10]) for t in 1:time_steps*noise_steps]
+#og_func = [exp(t*dt/noise_steps) for t in 1:time_steps*noise_steps]
+rezz = get_fractderiv(h,dt,time_steps,og_func,noise_steps)
+scatter(times,rezz,label="Calculated")
+#theory = [sum([(factorial(j)*times[i]^(j-alpha))/gamma(j+1-alpha)/factorial(j) for j in 1:10]) for i in 1:time_steps-1]
+theory = [mittleff(1,2-alpha,times[i])*times[i]^(1-alpha) for i in 1:time_steps-1]
+plot(times,theory,"r",label="Theory")
 #plot(hs,hs,label="Theory")
 #plot(hs,power_vals)
 legend()
+
 
