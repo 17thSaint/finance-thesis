@@ -1,5 +1,7 @@
 using HDF5,SpecialFunctions,PyPlot,Statistics,MittagLeffler
 
+include("fract_deriv.jl")
+
 function fluc_dissp_coeffs(which,beta,lambda,a,h,kBT=1,sigma0=1)
 	if which == "white"
 		whi_coeff = 2*beta*lambda*kBT
@@ -133,27 +135,16 @@ function get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
 	return g_of_t,velocity,accel
 end
 
-function get_fractderiv(h,delta_t,steps,og_func,noise_steps)
-	fract_deriv = [0.0 for i in 1:steps-1]
-	for i in 1:steps-1
-		for j in 0:noise_steps*i
-			func_here = og_func[noise_steps*i-j+1]
-			fact_j = exp(sum([log(i) for i in 1:j]))
-			binom_part = gamma(3-2*h)/(fact_j*gamma(3-2*h-j))
-			fract_deriv[i] += ((-1)^(j))*binom_part*func_here/(delta_t/noise_steps)^(2-2*h)
-		end
-	end
-	return fract_deriv
-end
-
 function get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)
 	g_stuff = get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
+	println("Got G(t)")
 	steps = length(config)
 	final_time = steps*delta_t
-	fract_deriv = [get_fractderiv(h,delta_t,steps,config,noise_steps)[i] for i in 2:steps-1]
+	fract_deriv = [get_fractderiv(h,delta_t,steps,config,0.0,noise_steps)[i] for i in 1:steps-2]
+	println("Got Fract Deriv")
 	scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
 	coeff = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
-	return abs.(g_stuff[1]+coeff.*fract_deriv),g_stuff[1],coeff.*fract_deriv
+	return abs.(g_stuff[1]+coeff.*fract_deriv)#,g_stuff[1],coeff.*fract_deriv
 end
 
 function move_position(num_times,chosen,step_size)
@@ -223,15 +214,16 @@ end
 
 
 
-final_time = 10
-time_steps = 10
+final_time = 100
+time_steps = 100
 lambda = 1.0
 gam = 1.0
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
 noise_steps = 1
-h = 0.3
+alpha = 0.7
+h = 0.5*(2 - alpha)
 tol = 0.001
 mc_steps = 100
 step_size = 1
@@ -240,8 +232,13 @@ metro_val = 1.0001
 noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
 #num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
 exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)[2]
+gt_exact = get_goft(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)[1]
+deriv = get_fractderiv(h,final_time/time_steps,time_steps,exact,0.0,noise_steps)
 resids_exact = get_resids(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)
-plot(resids_exact[1])
+#plot(resids_exact[1])
+#guess = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)
+#gt = get_goft(h,guess[2],final_time/time_steps,noise,noise_steps,lambda,gam)
+#plot(gt[1])
 
 
 "fin"
