@@ -35,8 +35,8 @@ function get_noise(h,n,t_fin,which=rand(1:20),make_new=false)
 end
 
 function get_scale_inv_vals(h,lambda,gam)
-	scaled_time = (lambda/gam)^(0.5/h)
-	scaled_pos = fluc_dissp_coeffs("color",0,0,gam,h)*scaled_time/sqrt(gam*lambda)
+	scaled_time = 1.0#(lambda/gam)^(0.5/h)
+	scaled_pos = 1.0#fluc_dissp_coeffs("color",0,0,gam,h)*scaled_time/sqrt(gam*lambda)
 	return scaled_time,scaled_pos
 end
 
@@ -137,14 +137,14 @@ end
 
 function get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)
 	g_stuff = get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
-	println("Got G(t)")
+	#println("Got G(t)")
 	steps = length(config)
 	final_time = steps*delta_t
-	fract_deriv = [get_fractderiv(h,delta_t,steps,config,0.0,noise_steps)[i] for i in 1:steps-2]
-	println("Got Fract Deriv")
+	#fract_deriv = [get_fractderiv(h,delta_t,steps,config,0.0,noise_steps)[i] for i in 2:steps-1]
+	#println("Got Fract Deriv")
 	scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
 	coeff = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
-	return abs.(g_stuff[1]+coeff.*fract_deriv)#,g_stuff[1],coeff.*fract_deriv
+	return abs.(g_stuff[1])#+coeff.*fract_deriv)#,g_stuff[1],coeff.*fract_deriv
 end
 
 function move_position(num_times,chosen,step_size)
@@ -154,15 +154,17 @@ function move_position(num_times,chosen,step_size)
 end
 
 function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,noise,noise_steps,top_val)
-	start_resids = get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)[1]
+	start_resids = get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)
 	shift_matrix = move_position(num_times,chosen,step_size)
-	new_resids = get_resids(h,config+shift_matrix,delta_t,noise,noise_steps,lambda,gam)[1]
+	new_resids = get_resids(h,config+shift_matrix,delta_t,noise,noise_steps,lambda,gam)
 	exp_diff = exp.(new_resids - start_resids)
-	checking = [ exp_diff[i] <= top_val for i in 1:length(config)-2 ] #1.000001
-	if all(checking)
-		return config+shift_matrix, 1, new_resids
+	#println(length(config)-2,", ",length(exp_diff))
+	#checking = [ exp_diff[i] <= top_val for i in 1:length(config)-2 ] #1.000001
+	checking = exp_diff[chosen-2] <= top_val
+	if checking#all(checking)
+		return config+shift_matrix, 1#, new_resids, start_resids, shift_matrix
 	else
-		return config, 0, start_resids
+		return config, 0, new_resids#, start_resids, shift_matrix
 	end
 	
 	return "Acceptance Calculation Error"
@@ -171,21 +173,23 @@ end
 function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_steps,x0,v0,top_val)
 	println("Starting")
 	# getting first config from first guess
-	running_config = get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
+	running_config = [0.0 for i in 1:10]#get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
 	# only save configuration data for every 10 attempted movements
 	samp_freq = 10
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
 	time_resids = fill(0.0,(time_told-2,Int(steps/samp_freq)))
 	index = 1
 	delta_t = t_fin/time_told
+	acc_rate = 0
 	for i in 1:steps
 		# each MC time step every time point has attempted move, except starting point
-		for k in 2:time_told
+		for k in 3:time_told
 			movement = acc_rej_move(running_config,h,time_told,k,step_size,delta_t,noise,noise_steps,top_val)
 			running_config = movement[1]
+			acc_rate += movement[2]
+			#println(movement[2],", ",movement[3],movement[4],movement[5])
 		end
-		
-		current_res = get_resids(h,running_config,delta_t,noise,lambda,gam)[1]
+		current_res = get_resids(h,running_config,delta_t,noise,noise_steps,lambda,gam)
 		
 		# saving data every 10 steps
 		if i%samp_freq == 0
@@ -203,7 +207,7 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 		
 		# interface data
 		if i%(steps*0.01) == 0
-			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res))
+			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
 		end
 	end
 	
@@ -212,12 +216,12 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 end
 
 
+# boundary points b/c 2nd order SDE
 
-
-final_time = 100
-time_steps = 100
+final_time = 10
+time_steps = 10
 lambda = 1.0
-gam = 1.0
+gam = 0.0
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
@@ -225,16 +229,28 @@ noise_steps = 1
 alpha = 0.7
 h = 0.5*(2 - alpha)
 tol = 0.001
-mc_steps = 100
+mc_steps = 1000
 step_size = 1
-metro_val = 1.0001
+metro_val = 1.00001
 
-noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
-#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
-exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)[2]
+noise = get_noise(h,noise_steps*time_steps,final_time,2)#.*fluc_dissp_coeffs("color",0,0,gam,h)
+num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
+#exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)
+soln = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)
+#test = get_goft(h,[0.1 for i in 1:10],final_time/time_steps,noise,noise_steps,lambda,gam)[1]
+
+for i in 1:10
+	plot(abs.(num_soln[1][:,i]-soln[2]))
+	sleep(0.5)
+end
+
+#=
 gt_exact = get_goft(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)[1]
-deriv = get_fractderiv(h,final_time/time_steps,time_steps,exact,0.0,noise_steps)
+scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
+coeffs = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
+coef_deriv = get_fractderiv(h,final_time/time_steps,time_steps,exact,0.0,noise_steps)
 resids_exact = get_resids(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)
+=#
 #plot(resids_exact[1])
 #guess = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)
 #gt = get_goft(h,guess[2],final_time/time_steps,noise,noise_steps,lambda,gam)
