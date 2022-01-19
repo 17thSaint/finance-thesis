@@ -171,9 +171,9 @@ function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,noise,noise_st
 end
 
 function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_steps,x0,v0,top_val)
-	println("Starting")
+	#println("Starting")
 	# getting first config from first guess
-	running_config = [0.0 for i in 1:10]#get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
+	running_config = append!([0.0,0.2578878557992171],[0.0 for i in 1:8])#get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
 	# only save configuration data for every 10 attempted movements
 	samp_freq = 10
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
@@ -201,14 +201,14 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 		# if every time point has residuals less than tolerance then solution is found
 		check_tol = [ current_res[j] < tol for j in 1:time_told-2 ]
 		if all(check_tol)
-			println("Solution Found in $i Steps")
+			#println("Solution Found in $i Steps")
 			return running_config,time_config,time_resids,i
 		end
 		
 		# interface data
-		if i%(steps*0.01) == 0
-			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
-		end
+		#if i%(steps*0.01) == 0
+		#	println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
+		#end
 	end
 	
 	println("No Solution")
@@ -229,20 +229,55 @@ noise_steps = 1
 alpha = 0.7
 h = 0.5*(2 - alpha)
 tol = 0.001
-mc_steps = 1000
-step_size = 1
-metro_val = 1.00001
+mc_steps = 1000000
+number = 100
+step_sizes = [0.03+0.1*i/number for i in 0:number]#[0.001,0.005,0.01,0.05,0.1,0.5,1]
+metro_vals = [1.0000001,1.000001,1.00001,1.0001]
 
 noise = get_noise(h,noise_steps*time_steps,final_time,2)#.*fluc_dissp_coeffs("color",0,0,gam,h)
-num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
+#avg_time = [[0.0 for i in 1:length(step_sizes)] for j in 1:length(metro_vals)]
+matrix_avg_time = fill(0.0,(length(metro_vals),length(step_sizes)))
+for k in 1:length(metro_vals)
+	metro_val = metro_vals[k]
+	for i in 1:length(step_sizes)
+		step_size = step_sizes[i]
+		count = 1
+		for j in 1:count
+			num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
+			if length(num_soln)==4
+				matrix_avg_time[k,i] += num_soln[4]
+			else
+				count -= 1
+			end
+		end
+		println(k/length(metro_vals),", ",i/length(step_sizes))
+		matrix_avg_time[k,i] /= count
+
+	end
+	#plot(step_sizes,avg_time[k],label="$metro_val")
+end
+#legend()
+
+
+function write_pos_data_hdf5(data)
+	println("Starting Data Write: $axis")
+	binary_file_pos = h5open("optimization-stepsize-metroval-data.hdf5","w")
+	create_group(binary_file_pos,"all-data")
+	alldata = binary_file_pos["all-data"]
+	alldata["deets"] = data
+	close(binary_file_pos)
+	println("Data Added, File Closed: $axis")
+end
+
+write_pos_data_hdf5(matrix_avg_time)
+
+
+
 #exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0)
-soln = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)
+#soln = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)
 #test = get_goft(h,[0.1 for i in 1:10],final_time/time_steps,noise,noise_steps,lambda,gam)[1]
 
-for i in 1:10
-	plot(abs.(num_soln[1][:,i]-soln[2]))
-	sleep(0.5)
-end
+
 
 #=
 gt_exact = get_goft(h,exact,final_time/time_steps,noise,noise_steps,lambda,gam)[1]
