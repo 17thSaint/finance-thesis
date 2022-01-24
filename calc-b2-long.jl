@@ -5,9 +5,9 @@ function frac_brown_wiki2(h,n,t_fin)
 	dB = [rand(Float64)*rand(-1:2:1)*sqrt(t_fin/n) for i in 1:n]
 	bh = fill(0.0,n)
 	for j in 1:n
-		if j%(0.05*n) == 0
-			println("H=",h,", ",100*j/n,"%",", Noise")
-		end
+		#if j%(0.05*n) == 0
+		#	println("H=",h,", ",100*j/n,"%",", Noise")
+		#end
 		for i in 0:j-1
 			function integrand(s::Float64)
 				return (((times[j+1]-s)^(h-0.5))/gamma(h+0.5))*_₂F₁(h-0.5,0.5-h,h+0.5,1-times[j+1]/s)
@@ -51,14 +51,14 @@ function calc_covar(h,avging_counts,interaction_time=500,sigma0=0.55804)
 end
 
 function write_data_hdf5(version,h,data)
-	println("Starting Data Write: H=$h, $count")
+	#println("Starting Data Write: H=$h, $count")
 	binary_file_pos = h5open("fBM-$version-h-$h.hdf5","w")
 	create_group(binary_file_pos,"values")
 	vals = binary_file_pos["values"]
 	vals["deets_th"] = data[2]
 	vals["deets_exp"] = data[1]
 	close(binary_file_pos)
-	println("Data Added, File Closed: H=$h")
+	#println("Data Added, File Closed: H=$h")
 end
 
 ver = parse(Int64,ARGS[1])
