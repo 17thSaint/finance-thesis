@@ -235,11 +235,18 @@ mc_steps = 100000
 metro_val = 1.000001
 step_size = 0.05*final_time/time_steps#0.08
 
-noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
-exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0,2)
-num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
-plot(exact[2],label="Exact")
-plot(num_soln[1],label="Num")
+#noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
+#exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0,2)
+#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
+
+step_numbers = [100,500,1000,2500,4800]
+for i in 1:5
+	step_number = step_numbers[i]
+	plot([i/20 for i in 3:20],num_soln[3][:,Int(step_number/10)],"-p",label="$step_number")
+end
+legend()
+xlabel("Time")
+ylabel("Residuals")
 
 #= making soln/resids plots
 step_found = num_soln[4]
