@@ -35,8 +35,8 @@ function get_noise(h,n,t_fin,which=rand(1:20),make_new=false)
 end
 
 function get_scale_inv_vals(h,lambda,gam)
-	scaled_time = 1.0#(lambda/gam)^(0.5/h)
-	scaled_pos = 1.0#fluc_dissp_coeffs("color",0,0,gam,h)*scaled_time/sqrt(gam*lambda)
+	scaled_time = (lambda/gam)^(0.5/h)
+	scaled_pos = fluc_dissp_coeffs("color",0,0,gam,h)*scaled_time/sqrt(gam*lambda)
 	return scaled_time,scaled_pos
 end
 
@@ -140,11 +140,11 @@ function get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)
 	#println("Got G(t)")
 	steps = length(config)
 	final_time = steps*delta_t
-	#fract_deriv = [get_fractderiv(h,delta_t,steps,config,0.0,noise_steps)[i] for i in 2:steps-1]
+	fract_deriv = [get_fractderiv(h,delta_t,steps,config,0.0,noise_steps)[i] for i in 2:steps-1]
 	#println("Got Fract Deriv")
 	scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
 	coeff = gam*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
-	return abs.(g_stuff[1])#+coeff.*fract_deriv)#,g_stuff[1],coeff.*fract_deriv
+	return abs.(g_stuff[1]+coeff.*fract_deriv)#,g_stuff[1],coeff.*fract_deriv
 end
 
 function move_position(num_times,chosen,step_size)
@@ -172,9 +172,9 @@ function acc_rej_move(config,h,num_times,chosen,step_size,delta_t,noise,noise_st
 end
 
 function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_steps,x0,v0,top_val,fixed)
-	#println("Starting")
+	println("Starting")
 	# getting first config from first guess
-	running_config = append!([0.0,fixed],[rand(Float64) for i in 1:time_told-2])#get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
+	running_config = append!([0.0,fixed],get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2][3:time_told])
 	# only save configuration data for every 10 attempted movements
 	samp_freq = 10
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
@@ -207,9 +207,9 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 		end
 		
 		# interface data
-		#if i%(steps*0.01) == 0
-		#	println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
-		#end
+		if i%(steps*0.01) == 0
+			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
+		end
 	end
 	
 	println("No Solution")
@@ -219,24 +219,27 @@ end
 
 # boundary points b/c 2nd order SDE
 
-final_time = 2
-time_steps = 10
+final_time = 1
+time_steps = 20
 dt = round(final_time/time_steps,digits=2)
 lambda = 1.0
-gam = 0.0
+gam = 0.5
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
 noise_steps = 1
 alpha = 0.5
 h = 0.5*(2 - alpha)
-tol = 0.1
-mc_steps = 1000000
-#metro_val = 1.000001
-#step_size = 0.1*final_time/time_steps#0.08
+tol = 0.01
+mc_steps = 100000
+metro_val = 1.000001
+step_size = 0.05*final_time/time_steps#0.08
 
-#noise = get_noise(h,noise_steps*time_steps,final_time,2)#.*fluc_dissp_coeffs("color",0,0,gam,h)
-#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
+noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
+exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0,2)
+num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
+plot(exact[2],label="Exact")
+plot(num_soln[1],label="Num")
 
 #= making soln/resids plots
 step_found = num_soln[4]
@@ -252,7 +255,7 @@ title("Residuals over MC Simulation, H=$h")
 legend()
 =#
 
-
+#=
 number = 20
 step_sizes = [0.1+0.5*i/number for i in 0:number]#[0.001,0.005,0.01,0.05,0.1,0.5,1]
 metro_vals = [1.0000001]
@@ -280,7 +283,7 @@ for k in 1:length(metro_vals)
 	plot(step_sizes,matrix_avg_time[k,:],label="$dt")
 end
 legend()
-
+=#
 
 
 #test = get_goft(h,[0.1 for i in 1:10],final_time/time_steps,noise,noise_steps,lambda,gam)[1]
