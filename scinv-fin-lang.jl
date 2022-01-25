@@ -174,7 +174,7 @@ end
 function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_steps,x0,v0,top_val,fixed)
 	#println("Starting")
 	# getting first config from first guess
-	running_config = append!([0.0,fixed],[0.0 for i in 1:time_told-2])#get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
+	running_config = append!([0.0,fixed],[rand(Float64) for i in 1:time_told-2])#get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2]
 	# only save configuration data for every 10 attempted movements
 	samp_freq = 10
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
@@ -207,9 +207,9 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 		end
 		
 		# interface data
-		if i%(steps*0.01) == 0
-			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
-		end
+		#if i%(steps*0.01) == 0
+		#	println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
+		#end
 	end
 	
 	println("No Solution")
@@ -219,8 +219,9 @@ end
 
 # boundary points b/c 2nd order SDE
 
-final_time = 5
-time_steps = 50
+final_time = 2
+time_steps = 10
+dt = round(final_time/time_steps,digits=2)
 lambda = 1.0
 gam = 0.0
 a0 = 0.0
@@ -231,38 +232,41 @@ alpha = 0.5
 h = 0.5*(2 - alpha)
 tol = 0.1
 mc_steps = 1000000
-metro_val = 1.000001
-step_size = 0.1*final_time/time_steps#0.08
+#metro_val = 1.000001
+#step_size = 0.1*final_time/time_steps#0.08
 
+#noise = get_noise(h,noise_steps*time_steps,final_time,2)#.*fluc_dissp_coeffs("color",0,0,gam,h)
+#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
+
+#= making soln/resids plots
+step_found = num_soln[4]
+step_numbers = [1000,5000,10000,30000,54550]
+for i in 1:5
+	step_number = step_numbers[i]
+	plot([5*i/50 for i in 3:50],num_soln[3][:,Int(step_number/10)],"-p",label="$step_number")
+end
+#plot(exact[1],exact[2],"-k",label="Exact")
+xlabel("Time")
+ylabel("Residuals")
+title("Residuals over MC Simulation, H=$h")
+legend()
+=#
+
+
+number = 20
+step_sizes = [0.1+0.5*i/number for i in 0:number]#[0.001,0.005,0.01,0.05,0.1,0.5,1]
+metro_vals = [1.0000001]
 
 noise = get_noise(h,noise_steps*time_steps,final_time,2)#.*fluc_dissp_coeffs("color",0,0,gam,h)
 exact = get_first_guess(h,time_steps,final_time,lambda,gam,noise,x0,v0,noise_steps)
-#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
-
-step_found = num_soln[4]
-for i in 1:10
-	step_number = i*1000*10
-	plot(exact[1],num_soln[2][:,Int(step_number/10)],"-p")
-end
-plot(exact[1],exact[2],"-k",label="Exact")
-legend()
-
-
-#=
-number = 100
-step_sizes = [0.03+0.1*i/number for i in 0:number]#[0.001,0.005,0.01,0.05,0.1,0.5,1]
-metro_vals = [1.0000001,1.000001,1.00001,1.0001]
-
-noise = get_noise(h,noise_steps*time_steps,final_time,2)#.*fluc_dissp_coeffs("color",0,0,gam,h)
-#avg_time = [[0.0 for i in 1:length(step_sizes)] for j in 1:length(metro_vals)]
 matrix_avg_time = fill(0.0,(length(metro_vals),length(step_sizes)))
 for k in 1:length(metro_vals)
 	metro_val = metro_vals[k]
 	for i in 1:length(step_sizes)
-		step_size = step_sizes[i]
-		count = 100
+		step_size = step_sizes[i]*final_time/time_steps
+		count = 10
 		for j in 1:count
-			num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val)
+			num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
 			if length(num_soln)==4
 				matrix_avg_time[k,i] += num_soln[4]
 			else
@@ -273,10 +277,10 @@ for k in 1:length(metro_vals)
 		matrix_avg_time[k,i] /= count
 
 	end
-	plot(step_sizes,matrix_avg_time[k,:],label="$metro_val")
+	plot(step_sizes,matrix_avg_time[k,:],label="$dt")
 end
 legend()
-=#
+
 
 
 #test = get_goft(h,[0.1 for i in 1:10],final_time/time_steps,noise,noise_steps,lambda,gam)[1]
