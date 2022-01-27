@@ -1,6 +1,5 @@
 using HDF5,SpecialFunctions,PyPlot,Statistics,MittagLeffler
 
-include("fract_deriv.jl")
 
 function fluc_dissp_coeffs(which,beta,lambda,a,h,kBT=1,sigma0=1)
 	if which == "white"
@@ -135,6 +134,23 @@ function get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
 	return g_of_t,velocity,accel
 end
 
+function get_fractderiv(h,delta_t,steps,og_func,f0,noise_steps,cap=1)
+	fract_deriv = [0.0 for i in 1:steps-1]
+	times = [i*delta_t for i in 1:steps-1]
+	for i in 1:steps-1
+		for j in 0:noise_steps*i
+			func_here = og_func[noise_steps*i-j+1] - cap*f0
+			fact_j = exp(sum([log(i) for i in 1:j]))
+			binom_part = gamma(3-2*h)/(fact_j*gamma(3-2*h-j))
+			fract_deriv[i] += ((-1)^(j))*binom_part*func_here/(delta_t/noise_steps)^(2-2*h)
+		end
+	end
+	#rl_shift = [cap*f0*(times[i]^(2*h-2))/gamma(2*h-1) for i in 1:steps-1]
+	#fract_deriv -= rl_shift
+	return fract_deriv
+end
+
+
 function get_resids(h,config,delta_t,noise,noise_steps,lambda,gam)
 	g_stuff = get_goft(h,config,delta_t,noise,noise_steps,lambda,gam)
 	#println("Got G(t)")
@@ -176,13 +192,17 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 	# getting first config from first guess
 	running_config = append!([0.0,fixed],get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2][3:time_told])
 	# only save configuration data for every 10 attempted movements
-	samp_freq = 10
+	samp_freq = Int(0.0001*steps)
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
 	time_resids = fill(0.0,(time_told-2,Int(steps/samp_freq)))
 	index = 1
 	delta_t = t_fin/time_told
 	acc_rate = 0
 	for i in 1:steps
+		if i == steps-10
+			steps += 100
+		end
+		
 		# each MC time step every time point has attempted move, except starting point
 		for k in 3:time_told
 			movement = acc_rej_move(running_config,h,time_told,k,step_size,delta_t,noise,noise_steps,top_val)
@@ -217,10 +237,12 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 end
 
 
+
+
 # boundary points b/c 2nd order SDE
 
 final_time = 1
-time_steps = 20
+time_steps = 10#0
 dt = round(final_time/time_steps,digits=2)
 lambda = 1.0
 gam = 0.5
@@ -231,14 +253,37 @@ noise_steps = 1
 alpha = 0.5
 h = 0.5*(2 - alpha)
 tol = 0.01
-mc_steps = 100000
+mc_steps = 10000#000
 metro_val = 1.000001
 step_size = 0.05*final_time/time_steps#0.08
 
-#noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
-#exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0,2)
-#num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
+noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
+exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0,2)
+num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
 
+function write_data_hdf5(h,data)
+	#println("Starting Data Write: H=$h, $count")
+	versions = [0,"N",0,"Y"]
+	ver = versions[length(data)]
+	binary_file_pos = h5open("fraclang-soln-h-$h-$ver.hdf5","w")
+	create_group(binary_file_pos,"values")
+	vals = binary_file_pos["values"]
+	if length(data) == 4
+		vals["soln"] = data[1]
+		vals["config_time"] = data[2]
+		vals["resids_time"] = data[3]
+		vals["soln_step"] = data[4]
+	else
+		vals["config_time"] = data[1]
+		vals["resids_time"] = data[2]
+	end
+	close(binary_file_pos)
+	#println("Data Added, File Closed: H=$h, $count")
+end
+
+write_data_hdf5(h,num_soln)
+
+#=
 step_numbers = [100,500,1000,2500,4800]
 for i in 1:5
 	step_number = step_numbers[i]
@@ -247,7 +292,7 @@ end
 legend()
 xlabel("Time")
 ylabel("Residuals")
-
+=#
 #= making soln/resids plots
 step_found = num_soln[4]
 step_numbers = [1000,5000,10000,30000,54550]
