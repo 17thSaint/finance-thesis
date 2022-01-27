@@ -26,7 +26,8 @@ end
 
 # gets noise from previous stored data file or makes new if asked
 function get_noise(h,n,t_fin,which=rand(1:20),make_new=false)
-	fBM = read_hdf5_data(h,which,true,n+1)[2]
+	fBM = read_hdf5_data(h,which,true,n)[2]
+	fBM = append!([fBM[1]],fBM)
 	if make_new
 		fBM = frac_brown_wiki2(h,n,t_fin)[2]
 	end
@@ -192,24 +193,33 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 	# getting first config from first guess
 	running_config = append!([0.0,fixed],get_first_guess(h,time_told,t_fin,lambda,gam,noise,x0,v0,noise_steps)[2][3:time_told])
 	# only save configuration data for every 10 attempted movements
-	samp_freq = Int(0.0001*steps)
+	samp_freq = Int(0.01*steps)
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
 	time_resids = fill(0.0,(time_told-2,Int(steps/samp_freq)))
 	index = 1
 	delta_t = t_fin/time_told
 	acc_rate = 0
+	num_correct = 0
 	for i in 1:steps
-		if i == steps-10
-			steps += 100
-		end
+		#if i == steps-10
+		#	println("Adding More Steps")
+		#	steps += 100
+		#end
 		
 		# each MC time step every time point has attempted move, except starting point
-		for k in 3:time_told
+		upper = 6 + num_correct
+		if upper > time_told
+			upper = time_told
+		end
+		
+		for k in 3 + num_correct:upper #time_told
+			#println("Checking points: ",3+num_correct,"-",upper)
 			movement = acc_rej_move(running_config,h,time_told,k,step_size,delta_t,noise,noise_steps,top_val)
 			running_config = movement[1]
 			acc_rate += movement[2]
 			#println(movement[2],", ",movement[3],movement[4],movement[5])
 		end
+		num_correct = 0
 		current_res = get_resids(h,running_config,delta_t,noise,noise_steps,lambda,gam)
 		
 		# saving data every 10 steps
@@ -221,14 +231,24 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,gam,noise,noise_
 		
 		# if every time point has residuals less than tolerance then solution is found
 		check_tol = [ current_res[j] < tol for j in 1:time_told-2 ]
+		for i in 1:time_told-2
+			if check_tol[i]
+				num_correct += 1
+			end
+		end
 		if all(check_tol)
+			if i == 1
+				tol *= 0.1
+				println("Tolerance too low")
+				continue
+			end
 			println("Solution Found in $i Steps")
 			return running_config,time_config,time_resids,i
 		end
 		
 		# interface data
 		if i%(steps*0.01) == 0
-			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate)
+			println("Running:"," ",100*i/steps,"%, ","Avg Res: ",mean(current_res),", Acceptance: ",acc_rate,", Number Correct: ",num_correct)
 		end
 	end
 	
@@ -241,8 +261,8 @@ end
 
 # boundary points b/c 2nd order SDE
 
-final_time = 1
-time_steps = 10#0
+final_time = 10
+time_steps = 50
 dt = round(final_time/time_steps,digits=2)
 lambda = 1.0
 gam = 0.5
@@ -252,14 +272,19 @@ v0 = 0.0
 noise_steps = 1
 alpha = 0.5
 h = 0.5*(2 - alpha)
-tol = 0.01
-mc_steps = 10000#000
+tol = 0.005
+mc_steps = 100000
 metro_val = 1.000001
 step_size = 0.05*final_time/time_steps#0.08
 
 noise = get_noise(h,noise_steps*time_steps,final_time,2).*fluc_dissp_coeffs("color",0,0,gam,h)
 exact = lang_soln(h,time_steps,noise_steps,noise,gam,lambda,final_time,v0,2)
 num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,gam,noise,noise_steps,x0,v0,metro_val,exact[2][2])
+#plot(exact[2])
+#for i in 1:10:50
+#	plot(num_soln[3][:,i],label="$i")
+#end
+#legend()
 
 function write_data_hdf5(h,data)
 	#println("Starting Data Write: H=$h, $count")
@@ -280,8 +305,18 @@ function write_data_hdf5(h,data)
 	close(binary_file_pos)
 	#println("Data Added, File Closed: H=$h, $count")
 end
+#write_data_hdf5(h,num_soln)
 
-write_data_hdf5(h,num_soln)
+function read_hdf5_data_soln(h,version)
+	file = h5open("fraclang-soln-h-$h-$version.hdf5","r")
+	data = [read(file["values"],"soln"),read(file["values"],"config_time"),read(file["values"],"resids_time"),read(file["values"],"soln_step")]
+	return data
+end
+
+#dats = read_hdf5_data_soln(h,"Y")
+#plot(dats[1]./exact[2],label="Num")
+
+
 
 #=
 step_numbers = [100,500,1000,2500,4800]

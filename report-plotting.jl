@@ -1,4 +1,4 @@
-using HDF5,SpecialFunctions,PyPlot,LaTeXStrings
+using HDF5,SpecialFunctions,PyPlot,LaTeXStrings,MittagLeffler
 
 function frac_deriv_poly(a,time,sigma,alpha)
        val = gamma(sigma+1)*((time-a)^(sigma-alpha))/gamma(sigma-alpha+1)
@@ -6,13 +6,69 @@ function frac_deriv_poly(a,time,sigma,alpha)
 end
 
 function read_hdf5_data(h,version)
-	cd("fBM-data")
-	file = h5open("fBM-$version-h-$h.hdf5","r")
-	data = [read(file["values"],"deets_exp"), read(file["values"],"deets_th")]
-	cd("..")
+	#cd("fBM-data")
+	#file = h5open("fBM-$version-h-$h.hdf5","r")
+	#data = [read(file["values"],"deets_exp"), read(file["values"],"deets_th")]
+	file = h5open("fraclang-soln-h-$h-$version.hdf5","r")
+	data = [read(file["values"],"soln"),read(file["values"],"config_time"),read(file["values"],"resids_time"),read(file["values"],"soln_step")]
+	#cd("..")
 	return data
 end
 
+function get_ml(h2,xs)
+	count = length(xs)
+	ml = [mittleff(h2,2,xs[j]) for j in 1:count]
+	return ml,h2
+end
+
+function get_bincoef(alph,n)
+	top = gamma(alph+1)
+	bot = gamma(n+1)*gamma(alph-n+1)
+	return top/bot
+end
+
+ns = [i for i in 2:7]
+alphs = [0.1 + i*.89/50 for i in 0:50]
+bin = [[get_bincoef(alphs[i],ns[j]) for i in 1:51] for j in 1:6]
+for i in 1:6
+	lab = ns[i]
+	plot(alphs,bin[i],label="$lab")
+end
+legend()
+xlabel(latexstring("\$ \\alpha \$"))
+title(latexstring("Binomial Coefficient(\$ \\alpha, n \$)"))
+
+
+
+
+#=  Mittag-leffler function
+final_x = -8.1
+start_x = -1.1
+count = 50
+xs = [start_x + i*(final_x-start_x)/count for i in 0:count]
+hs = [1.01 + i*0.98/5.0 for i in 0:5]
+for i in 1:6
+	mls = get_ml(hs[i],xs)
+	lab = round(mls[2],digits=2)
+	plot(xs,mls[1],label=latexstring("\$ E_{$lab,2} \$"))
+end
+legend()
+xlabel("x")
+title("Mittag-Leffler Function")
+=#
+#= plotting covar
+h = 0.73
+xs = [i/500 for i in 1:499]
+dats = read_hdf5_data(h,"covar")
+plot(xs,dats[1],label="Sim")
+plot(xs,dats[2],label="Th")
+xlabel("Time (t)")
+ylabel(latexstring("\$ \\langle B(t) B(t=1.0) \\rangle  \$"))
+title("Covariance of fBM, H=$h")
+legend()
+=#
+
+#=  b2 plotting fBM
 h_start = 0.25
 h_end = 0.75
 dh = 0.01
@@ -23,7 +79,6 @@ for i in 1:h_count+1
 	b2s[i,:] = read_hdf5_data(hs[i],"covar")
 end
 labels = ["Sim","Th"]
-#=
 for i in 1:2
 	lab = labels[i]
 	if i == 1
