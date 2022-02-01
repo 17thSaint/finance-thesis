@@ -190,9 +190,9 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 		end
 		
 		# interface data
-		#if i%(steps*0.01) == 0
-		#	println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,", Number Wrong: ",length(num_wrong))
-		#end
+		if i%(steps*0.01) == 0
+			println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,", Number Wrong: ",length(num_wrong))
+		end
 	end
 	
 	println("No Solution")
@@ -201,29 +201,68 @@ end
 
 function get_avg_price_jump(series)
 	len = length(series)
-	avg_jump = 0
+	avg_jump = [0.0 for i in 1:len-1]
 	for i in 1:len-1
-		avg_jump += abs(series[i+1]-series[i])/(len-1)
+		avg_jump[i] = abs(series[i+1]-series[i])
 	end
-	return avg_jump
+	return mean(avg_jump),std(avg_jump)
 end
 
 
-final_time = 1
-time_steps = 10
+final_time = 10
+time_steps = 20
 times = [i*final_time/time_steps for i in 0:time_steps-1]
-bets = 1.0
 a = 1.0
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
 noise_steps = 1
 
-tol = 0.00001
+tol = 0.001
 mc_steps = 500000
 metro_val = 1.000001
-step_size = 0.00001
+step_size = 0.005
+lambda = 1.0
+bets = 1.0
 
+hs = [0.55,0.6,0.65,0.7,0.75,0.8]
+white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+avg_jumps = [0.0 for i in 1:length(hs)]
+errors = [0.0 for i in 1:length(hs)]
+for i in 1:length(hs)
+	h = hs[i]
+	colored_noise = get_noise(h,time_steps,final_time,2).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+	noise = white_noise + colored_noise
+	num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+	dats = get_avg_price_jump(num_soln[1])
+	avg_jumps[i] = dats[1]
+	errors[i] = dats[2]
+end
+errorbar(hs,avg_jumps,yerr=[errors,errors],fmt="-o")
+	
+
+
+#=
+lambdas = [1.0,2.0,5.0]
+betss = [0.01 + i*4/10 for i in 0:9]
+avg_jumps = [[0.0 for i in 1:length(betss)] for j in 1:length(lambdas)]
+for j in 1:length(lambdas)
+	lambda = lambdas[j] 
+	for i in 1:length(betss)
+		println(j,", ",i)
+		bets = betss[i]
+		white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+		colored_noise = get_noise(h,time_steps,final_time,2).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+		noise = white_noise + colored_noise
+		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+		avg_jumps[j][i] = get_avg_price_jump(num_soln[1])
+	end
+	plot(betss,avg_jumps[j],label="$lambda")
+end
+legend()
+=#
+
+#=
 hs = [0.55,0.6,0.65,0.7,0.75]
 lambdas = [10 + i*80/10 for i in 0:10]
 avg_jumps = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
@@ -244,7 +283,7 @@ legend()
 xlabel("Market Liquidity")
 ylabel("AVG Price Movement")
 title("Volatility vs Market Liquidity")
-	
+=#
 
 
 
