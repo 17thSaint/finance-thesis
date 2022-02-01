@@ -38,13 +38,12 @@ end
 
 t_fin = 10
 hs = [0.525,0.575,0.625,0.675,0.725,0.775,0.825,0.85,0.875,0.9,0.925,0.95,0.975]
+ver = parse(Int64,ARGS[1])
+h = hs[ver]
 num_times = 20
-for i in 1:length(hs)
-	h = hs[i]
-	for j in 1:num_times
-		data_here = frac_brown_wiki2(h,10000,10000)
-		write_fBM_data_hdf5(h,j,data_here)
-	end
+for j in 1:num_times
+	data_here = frac_brown_wiki2(h,10000,10000)
+	write_fBM_data_hdf5(h,j,data_here)
 end
 
 # start 11:10 end 11:17  therefore 20 counts with 13 h's is 30 hours runtime
