@@ -217,17 +217,24 @@ function auto_correlation(energies, delta_t)
     
     autocorrelation_top = [0.0 for i in 1:points]
     autocorrelation_bottom = mean(energy_fluctuations.^2)
+    error_bot = std(energy_fluctuations.^2)
     
     for i in 1:points
         autocorrelation_top[i] = energy_fluctuations[i]*energy_fluctuations[i+delta_t]
     end
     
-    return (mean(autocorrelation_top)/autocorrelation_bottom)
+    full_top = mean(autocorrelation_top)
+    rezz = full_top/autocorrelation_bottom
+    
+    error_top = std(autocorrelation_top)
+    full_error = rezz*sqrt((error_top/full_top)^2 + (error_bot/autocorrelation_bottom)^2)
+    #println(full_error)
+    return rezz,full_error
 end
 
 
-final_time = 10
-time_steps = 20
+final_time = 1
+time_steps = 10
 times = [i*final_time/time_steps for i in 0:time_steps-1]
 a = 1.0
 a0 = 0.0
@@ -238,29 +245,35 @@ noise_steps = 1
 tol = 0.001
 mc_steps = 500000
 metro_val = 1.000001
-step_size = 0.005
-lambda = 1.0
+step_size = 0.0001
+#lambda = 1.0
 bets = 1.0
-
+#= Price correlation to history
 hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.975]
 white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
-dts = [i for i in 1:6]
-selected_corrs = [[0.0 for i in 1:length(hs)] for j in 1:6]
+
+dts = [i for i in 1:4]
+selected_corrs = [[0.0 for i in 1:length(hs)] for j in 1:4]
+errors = [[0.0 for i in 1:length(hs)] for j in 1:4]
 for i in 1:length(hs)
 	h = hs[i]
 	colored_noise = get_noise(h,time_steps,final_time,3).*fluc_dissp_coeffs("color",bets,lambda,a,h)
 	noise = white_noise + colored_noise
 	num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
-	for j in 1:6
-		selected_corrs[j][i] = auto_correlation(num_soln[1],dts[j])
+	for j in 1:4
+		rezzs = auto_correlation(num_soln[1],dts[j])
+		selected_corrs[j][i] = rezzs[1]
+		errors[j][i] = rezzs[2]
 	end
 end
-for i in 1:6
+for i in 1:4
 	sep = dts[i]
-	plot(hs,selected_corrs[i],"-o",label="$sep")
+	errorbar(hs,selected_corrs[i],yerr=[errors[i],errors[i]],fmt="-o",label="$sep")
 end
 legend()
-
+xlabel("Hurst parameter")
+ylabel("History Correlation")
+=#
 #=  Volatility vs Hurst, no relation
 hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.975]
 white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
@@ -279,12 +292,15 @@ for j in 1:3
 	errorbar(hs,avg_jumps[j],yerr=[errors[j],errors[j]],fmt="-o")
 end
 =#
-#=
+#= Volatility vs frequency of transactions
 lambdas = [1.0,2.0,5.0]
-betss = [0.01 + i*4/10 for i in 0:9]
+hs = [0.55,0.75,0.95]
+betss = [0.01 + i*10/10 for i in 0:9]
 avg_jumps = [[0.0 for i in 1:length(betss)] for j in 1:length(lambdas)]
+errors = [[0.0 for i in 1:length(betss)] for j in 1:length(lambdas)]
 for j in 1:length(lambdas)
-	lambda = lambdas[j] 
+	#lambda = lambdas[j] 
+	h = hs[j]
 	for i in 1:length(betss)
 		println(j,", ",i)
 		bets = betss[i]
@@ -292,17 +308,23 @@ for j in 1:length(lambdas)
 		colored_noise = get_noise(h,time_steps,final_time,2).*fluc_dissp_coeffs("color",bets,lambda,a,h)
 		noise = white_noise + colored_noise
 		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
-		avg_jumps[j][i] = get_avg_price_jump(num_soln[1])
+		rezzs = get_avg_price_jump(num_soln[1])
+		avg_jumps[j][i] = rezzs[1]
+		errors[j][i] = rezzs[2]
 	end
-	plot(betss,avg_jumps[j],label="$lambda")
+	errorbar(betss,avg_jumps[j],yerr=[errors[j],errors[j]],fmt="-o",label="$h")
 end
 legend()
+xlabel("Frequency of Transactions")
+ylabel("AVG Price Jump")
+title("Volatility vs Transaction Frequency for range Liquidity")
 =#
 
-#=
-hs = [0.55,0.6,0.65,0.7,0.75]
+# Volat and Liquidity
+hs = [0.7,0.725,0.775,0.8]#[0.55,0.675,0.75,0.875,0.975]
 lambdas = [10 + i*80/10 for i in 0:10]
 avg_jumps = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
+errors = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
 for j in 1:length(hs)
 	h = hs[j]
 	for i in 1:length(lambdas)
@@ -312,17 +334,35 @@ for j in 1:length(hs)
 		colored_noise = get_noise(h,time_steps,final_time,2).*fluc_dissp_coeffs("color",bets,lambda,a,h)
 		noise = white_noise + colored_noise
 		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
-		avg_jumps[j][i] = get_avg_price_jump(num_soln[1])
+		data_here = get_avg_price_jump(num_soln[1])
+		avg_jumps[j][i] = data_here[1]
+		errors[j][i] = data_here[2]
+		
 	end
-	plot(lambdas,avg_jumps[j],"-p",label="$h")
+	errorbar(lambdas,avg_jumps[j],yerr=[errors[j],errors[j]],fmt="-o",label="$h")
 end
 legend()
 xlabel("Market Liquidity")
 ylabel("AVG Price Movement")
 title("Volatility vs Market Liquidity")
+
+#= Paths with ranging memory strength
+h = 0.75
+as = [0.001,2.5,5.0]
+	for i in 1:length(as)
+		println(i)
+		a = as[i]
+		white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+		colored_noise = get_noise(h,time_steps,final_time,2).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+		noise = white_noise + colored_noise
+		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+		plot(times,num_soln[1],"-p",label="$a")
+	end
+legend()
+xlabel("Time")
+ylabel("Price")
+title("Paths for range of Memory Strength")
 =#
-
-
 
 
 "fin"
