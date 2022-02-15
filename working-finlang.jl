@@ -2,7 +2,7 @@
 #import Pkg; Pkg.add("SpecialFunctions")
 #import Pkg; Pkg.add("Statistics")
 #import Pkg; Pkg.add("MittagLeffler")
-using HDF5,SpecialFunctions,PyPlot,Statistics,MittagLeffler
+using HDF5,SpecialFunctions,PyPlot,Statistics,MittagLeffler,LaTeXStrings
 
 
 function fluc_dissp_coeffs(which,bets,lambda,a,h,kBT=1,sigma0=1)
@@ -194,7 +194,7 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 		end
 		
 		# interface data
-		if i%(steps*0.01) == 0
+		if i%(steps*0.001) == 0
 			println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,", Number Wrong: ",length(num_wrong),", H = $h")
 		end
 	end
@@ -247,7 +247,7 @@ function get_sd(soln) # squared displacement
 end
 
 function write_msd_data_hdf5(data,h)
-	println("Starting Data Write: $axis")
+	println("Starting Data Write")
 	binary_file_pos = h5open("msd-vs-h-$h.hdf5","w")
 	create_group(binary_file_pos,"all-data")
 	alldata = binary_file_pos["all-data"]
@@ -256,9 +256,16 @@ function write_msd_data_hdf5(data,h)
 	println("Data Added, File Closed: $h")
 end
 
+function read_msd_hdf5_data(h)
+	file = h5open("msd-vs-h-$h.hdf5","r")
+	data = read(file["all-data"],"msd")
+	return data
+end
 
-final_time = 40
-time_steps = 40
+
+
+final_time = 1
+time_steps = 10
 times = [i*final_time/time_steps for i in 0:time_steps-1]
 a = 1.0
 a0 = 0.0
@@ -267,32 +274,77 @@ v0 = 0.0
 noise_steps = 1
 
 tol = 0.001
-mc_steps = 500000
+mc_steps = 5000000
 metro_val = 1.000001
-step_size = 0.01
+step_size = 0.0001#0.005
 lambda = 5.0
 #h = 0.55
 bets = 1.0
 
 
+#= expected value at given time
+selected_time = time_steps
+white_count = 1
+lambdas = [1.0 + i*10/10 for i in 0:10]
+hs = [0.55,0.75,0.95]
+counts_hs = [20,20,10]
+#=
+expected_price = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
+errors = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
+for l in 1:length(hs)
+	h = hs[l]
+	count = counts_hs[l]
+	for i in 1:length(lambdas)
+		println(l,", ",i)
+		lambda = lambdas[i]
+		local_expected_prices = []
+		for j in 1:count
+			colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+			for k in 1:white_count
+				white_noise = get_noise(0.5,time_steps,final_time,k).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+				noise = white_noise + colored_noise
+				num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+				append!(local_expected_prices,abs(num_soln[1][end]))
+			end
+		end
+		expected_price[l][i] = mean(local_expected_prices)
+		errors[l][i] = std(local_expected_prices)
+	end
+	errorbar(lambdas,expected_price[l],yerr=[errors[l],errors[l]],label="$h")
+end
+legend()
+=#
+for i in 1:length(hs)
+	h = hs[i]
+	plot(lambdas,errors[i],label="$h")
+end
+#ylabel(latexstring("\$ \\mathbb{E} \$ [P(t=1)]"))
+#title("Expected Value of Price at t = 1 vs Liquidity")
+title("Variance of Expected Value vs Liquidity, range H")
+xlabel(latexstring("Market Liquidity, \$ \\lambda \$"))
+
+
+# errors = [[0.011123156136320799, 0.005113516536587368, 0.003229451912248103, 0.0023643448165093068, 0.0018743155764085202, 0.0015401585147341167, 0.0013137741339704504, 0.0011389413702820618, 0.001010775957045089, 0.0009048780704512181, 0.0008234191901862014],[0.010690379373428099, 0.005397942836544762, 0.0037371227273192815, 0.0028384420253396688, 0.002243368887067092, 0.0018625804539577845, 0.001584797556060686, 0.0013813023255170999, 0.0012193851039699265, 0.0010958038260582461, 0.000994683473608056],[0.014114381638318695, 0.007186096756963081, 0.004661006566537109, 0.0034527772937272797, 0.0027357279004645934, 0.0022620764057069624, 0.0019287586043179414, 0.0016841306345919099, 0.0014978804670156202, 0.0013424575102295678, 0.0012196607255481897]]
+# expected_price = [[0.020083749435273208, 0.011822895704126878, 0.009161463126122284, 0.0077296992383412534, 0.0068070261296105895, 0.00614618526352113, 0.005650622970025069, 0.005248321812828266, 0.004931353414387341, 0.004659398794969061, 0.0044310333860214015], [0.016375740156689002, 0.009920234258719204, 0.007817103162634124, 0.0067191781031230345, 0.006019442233483335, 0.00549891647905151, 0.005101905307731918, 0.004775247323544507, 0.004507313034934853, 0.004282254473072314, 0.00408722643500412], [0.02037188071247686, 0.011972135885754893, 0.009333159912950674, 0.007911678668445245, 0.006960053662540694, 0.006282737274525685, 0.005774241292109119, 0.005365755113685405, 0.005036202348615111, 0.004758759318343516, 0.004516900220451618]]
+
+=#
+
 # Mean squared displacement
 hs = [0.55,0.75,0.95]
 #lambdas = [1.0,2.0,5.0]
-counts_hs = [20,20,10]
+counts_hs = [3,3,3]
 selected = parse(Int64,ARGS[1])
-h = hs[selected]
-msds = [0.0 for j in 1:time_steps]
-count = counts_hs[selected]
+msds = [[0.0 for j in 1:time_steps] for i in 1:length(hs)]
 white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+h = hs[selected]
+count = counts_hs[selected]
 for j in 1:count
 	colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
 	noise = white_noise + colored_noise
 	num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
-	msds += get_sd(num_soln[1])/count
+	msds[selected] += get_sd(num_soln[1])/count
 end
-
-write_msd_data_hdf5(msds,h)
-
+write_msd_data_hdf5(msds[selected],h)
 
 #= Price correlation to history
 hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.975]
