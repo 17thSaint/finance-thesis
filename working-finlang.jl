@@ -1,3 +1,7 @@
+#import Pkg; Pkg.add("HDF5")
+#import Pkg; Pkg.add("SpecialFunctions")
+#import Pkg; Pkg.add("Statistics")
+#import Pkg; Pkg.add("MittagLeffler")
 using HDF5,SpecialFunctions,PyPlot,Statistics,MittagLeffler
 
 
@@ -232,9 +236,29 @@ function auto_correlation(energies, delta_t)
     return rezz,full_error
 end
 
+function get_sd(soln) # squared displacement
+	time_steps = length(soln)
+	start = soln[1]
+	sd = [0.0 for i in 1:time_steps]
+	for i in 1:time_steps
+		sd[i] = abs2(soln[i] - start)
+	end
+	return sd
+end
 
-final_time = 1
-time_steps = 10
+function write_msd_data_hdf5(data,h)
+	println("Starting Data Write: $axis")
+	binary_file_pos = h5open("msd-vs-h-$h.hdf5","w")
+	create_group(binary_file_pos,"all-data")
+	alldata = binary_file_pos["all-data"]
+	alldata["msd"] = data
+	close(binary_file_pos)
+	println("Data Added, File Closed: $h")
+end
+
+
+final_time = 40
+time_steps = 40
 times = [i*final_time/time_steps for i in 0:time_steps-1]
 a = 1.0
 a0 = 0.0
@@ -245,9 +269,31 @@ noise_steps = 1
 tol = 0.001
 mc_steps = 500000
 metro_val = 1.000001
-step_size = 0.0001
-#lambda = 1.0
+step_size = 0.01
+lambda = 5.0
+#h = 0.55
 bets = 1.0
+
+
+# Mean squared displacement
+hs = [0.55,0.75,0.95]
+#lambdas = [1.0,2.0,5.0]
+counts_hs = [20,20,10]
+selected = parse(Int64,ARGS[1])
+h = hs[selected]
+msds = [0.0 for j in 1:time_steps]
+count = counts_hs[selected]
+white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+for j in 1:count
+	colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+	noise = white_noise + colored_noise
+	num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+	msds += get_sd(num_soln[1])/count
+end
+
+write_msd_data_hdf5(msds,h)
+
+
 #= Price correlation to history
 hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.975]
 white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
@@ -320,8 +366,8 @@ ylabel("AVG Price Jump")
 title("Volatility vs Transaction Frequency for range Liquidity")
 =#
 
-# Volat and Liquidity
-hs = [0.7,0.725,0.775,0.8]#[0.55,0.675,0.75,0.875,0.975]
+#= Volat and Liquidity
+hs = [0.7,0.725,0.775,0.8,0.55,0.675,0.75,0.875,0.975]
 lambdas = [10 + i*80/10 for i in 0:10]
 avg_jumps = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
 errors = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
@@ -331,12 +377,15 @@ for j in 1:length(hs)
 		println(j,", ",i)
 		lambda = lambdas[i]
 		white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
-		colored_noise = get_noise(h,time_steps,final_time,2).*fluc_dissp_coeffs("color",bets,lambda,a,h)
-		noise = white_noise + colored_noise
-		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
-		data_here = get_avg_price_jump(num_soln[1])
-		avg_jumps[j][i] = data_here[1]
-		errors[j][i] = data_here[2]
+		data_here = [0.0 for p in 1:20]
+		for k in 1:10
+			colored_noise = get_noise(h,time_steps,final_time,k).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+			noise = white_noise + colored_noise
+			num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+			data_here[k] = get_avg_price_jump(num_soln[1])[1]
+		end
+		avg_jumps[j][i] = mean(data_here)
+		errors[j][i] = std(data_here)
 		
 	end
 	errorbar(lambdas,avg_jumps[j],yerr=[errors[j],errors[j]],fmt="-o",label="$h")
@@ -345,7 +394,7 @@ legend()
 xlabel("Market Liquidity")
 ylabel("AVG Price Movement")
 title("Volatility vs Market Liquidity")
-
+=#
 #= Paths with ranging memory strength
 h = 0.75
 as = [0.001,2.5,5.0]
