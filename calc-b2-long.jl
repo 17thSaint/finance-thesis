@@ -1,4 +1,9 @@
-using HDF5, Cubature, SpecialFunctions, HypergeometricFunctions
+#import Pkg; Pkg.add("HDF5")
+#import Pkg; Pkg.add("Cubature")
+#import Pkg; Pkg.add("SpecialFunctions")
+#import Pkg; Pkg.add("HypergeometricFunctions")
+#import Pkg; Pkg.add("Statistics")
+using HDF5, Cubature, SpecialFunctions, HypergeometricFunctions, Statistics
 
 function frac_brown_wiki2(h,n,t_fin)
 	times = [i*t_fin/n for i in 0:n]
@@ -28,9 +33,9 @@ function calc_b2(h,avging_counts,sigma0=0.55804)
 	th_exp_squared = (sigma0^2)*gamma(2-2*h)/(2*h*gamma(1.5-h)*gamma(0.5+h))
 	exp_squared = [0.0 for i in 1:avging_counts]
 	for i in 1:avging_counts
-		exp_squared[i] = (last(motion[i])^2)/avging_counts
+		exp_squared[i] = last(motion[i])^2
 	end
-	return sum(exp_squared), th_exp_squared
+	return mean(exp_squared), std(exp_squared), th_exp_squared
 end
 
 function calc_covar(h,avging_counts,interaction_time=500,sigma0=0.55804)
@@ -50,33 +55,56 @@ function calc_covar(h,avging_counts,interaction_time=500,sigma0=0.55804)
 	return covar,th_covar
 end
 
-function write_data_hdf5(version,h,data)
+function write_data_hdf5(version,counts,data)
 	#println("Starting Data Write: H=$h, $count")
-	binary_file_pos = h5open("fBM-$version-h-$h.hdf5","w")
+	binary_file_pos = h5open("fBM-$version-counts-$counts.hdf5","w")
 	create_group(binary_file_pos,"values")
 	vals = binary_file_pos["values"]
-	vals["deets_th"] = data[2]
+	vals["deets_th"] = data[3]
 	vals["deets_exp"] = data[1]
+	vals["deets_error"] = data[2]
 	close(binary_file_pos)
 	#println("Data Added, File Closed: H=$h")
 end
+#=
+function read_hdf5_data(version,counts)
+	file = h5open("fBM-$version-counts-$counts.hdf5","r")
+	data = [read(file["values"],"deets_th"),read(file["values"],"deets_exp"),read(file["values"],"deets_error")]
+	return data
+end
+=#
 
 ver = parse(Int64,ARGS[1])
 vers = ["b2","covar"]
 avg_counts = parse(Int64,ARGS[2])
+
 h_start = 0.25
 h_end = 0.75
 dh = 0.01
 h_count = Int((h_end-h_start)/dh)
-hs = [h_start + dh*i for i in 0:h_count]
+hs = [round(h_start + dh*i,digits=2) for i in 0:h_count]
+
+theorys = [0.0 for i in 1:length(hs)]
+exps = [0.0 for i in 1:length(hs)]
+errors = [0.0 for i in 1:length(hs)]
 for i in 1:h_count+1
 	if ver == 1
 		data = calc_b2(hs[i],avg_counts)
 	else
 		data = calc_covar(hs[i],avg_counts)	
 	end
-	write_data_hdf5(vers[ver],hs[i],data)	
+	theorys[i] = data[3]
+	exps[i] = data[1]
+	errors[i] = data[2]
 end
+write_data_hdf5(vers[ver],avg_counts,[exps,errors,theorys])
+
+#dats = read_hdf5_data(vers[ver],avg_counts)
+#errorbar(hs,dats[2],yerr=[dats[3],dats[3]],fmt="-o")
+#plot(hs,dats[1])
+
+
+
 
 
 
