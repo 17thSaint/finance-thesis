@@ -3,7 +3,7 @@
 #import Pkg; Pkg.add("SpecialFunctions")
 #import Pkg; Pkg.add("HypergeometricFunctions")
 #import Pkg; Pkg.add("Statistics")
-using HDF5, Cubature, SpecialFunctions, HypergeometricFunctions, Statistics
+using HDF5, Cubature, SpecialFunctions, HypergeometricFunctions, Statistics, PyPlot, LaTeXStrings
 
 function frac_brown_wiki2(h,n,t_fin)
 	times = [i*t_fin/n for i in 0:n]
@@ -66,24 +66,24 @@ function write_data_hdf5(version,counts,data)
 	close(binary_file_pos)
 	#println("Data Added, File Closed: H=$h")
 end
-#=
+
 function read_hdf5_data(version,counts)
 	file = h5open("fBM-$version-counts-$counts.hdf5","r")
 	data = [read(file["values"],"deets_th"),read(file["values"],"deets_exp"),read(file["values"],"deets_error")]
 	return data
 end
-=#
 
-ver = parse(Int64,ARGS[1])
+
+ver = 1#parse(Int64,ARGS[1])
 vers = ["b2","covar"]
-avg_counts = parse(Int64,ARGS[2])
+avg_counts = [10,100,250,500,1000]#parse(Int64,ARGS[2])
 
 h_start = 0.25
 h_end = 0.75
 dh = 0.01
 h_count = Int((h_end-h_start)/dh)
 hs = [round(h_start + dh*i,digits=2) for i in 0:h_count]
-
+#=
 theorys = [0.0 for i in 1:length(hs)]
 exps = [0.0 for i in 1:length(hs)]
 errors = [0.0 for i in 1:length(hs)]
@@ -98,12 +98,21 @@ for i in 1:h_count+1
 	errors[i] = data[2]
 end
 write_data_hdf5(vers[ver],avg_counts,[exps,errors,theorys])
+=#
 
-#dats = read_hdf5_data(vers[ver],avg_counts)
-#errorbar(hs,dats[2],yerr=[dats[3],dats[3]],fmt="-o")
-#plot(hs,dats[1])
-
-
+counts = avg_counts[5]
+s0 = 0.55804
+dats = read_hdf5_data(vers[ver],counts)
+#errorbar(hs,dats[2],yerr=[dats[3],dats[3]],fmt="-o",label="$counts")
+s0_should = sqrt.(dats[2]./dats[1].*(s0^2))
+plot(hs,s0_should,"-p",label="$counts")
+#plot(hs,dats[2],"-p",label="$counts")
+#plot(hs,dats[1],label="Theory")
+#=
+legend()
+xlabel("Hurst parameter, H")
+ylabel("\$ \\mathbb{E} [ B_{H}^{2}(t = 1) ] \$")
+=#
 
 
 
