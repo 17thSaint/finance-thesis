@@ -276,10 +276,10 @@ end
 
 
 
-final_time = 169
-time_steps = 169
+final_time = 169#10
+time_steps = 169#100
 times = [i*final_time/time_steps for i in 0:time_steps-1]
-a = 0.5
+a = 1.0
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
@@ -288,7 +288,7 @@ noise_steps = 1
 tol = 0.001
 mc_steps = 500000
 metro_val = 1.000001
-step_size = 0.0075
+step_size = 0.0075#0.00001
 lambda = 5.0
 #h = 0.75
 bets = 1.0
@@ -353,9 +353,9 @@ xlabel("Hurst parameter, H")
 
 
 # Mean squared displacement
-#hs = [0.95,0.75,0.55]
+hs = [0.95,0.75,0.55]
 #lambdas = [1.0,2.0,5.0]
-#counts_hs = [5,5,5]
+counts_hs = [5,5,5]
 #selected = parse(Int64,ARGS[1])
 #h = hs[selected]
 #as = [0.1,1.0,2.5,5.0]
@@ -365,11 +365,12 @@ for i in 1:length(hs)
 	h = hs[i]
 	count = counts_hs[i]
 	for j in 1:count
-		white_noise = get_noise(0.5,time_steps,final_time,j+1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
-		colored_noise = get_noise(h,time_steps,final_time,j+1).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+		white_noise = get_noise(0.5,time_steps,final_time,j).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+		colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
 		noise = white_noise + colored_noise
 		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
-		msds[i] += get_sd(num_soln[1])/3
+		msds[i] += get_sd(num_soln[1])/count
+		#plot(times,num_soln[1],label="$h")
 		#write_data_hdf5("path",num_soln[1],h,final_time,time_steps,lambda,bets,a)
 	end
 	write_data_hdf5("msd",msds[i],h,final_time,count,lambda,bets,a)
@@ -378,19 +379,30 @@ for i in 1:length(hs)
 end
 =#
 
-for i in [0.5,1.0,2.0]
-	h = 0.55
+for i in 1:length(hs)
+	h = hs[i]
 	alph = round(2-2*h,digits=2)
-	dats = read_msd_hdf5_data("msd",h,final_time,5,lambda,bets,i)
-	plot(times,dats,label="$i")
+	dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,1.0)
+	plot(times,dats,label="$alph")
 end
+time_start = 1.1*10^0#2*10^(-1)
+time_end = 3*10^0#2*10^0
+time_start2 = 2.5*10^1
+time_end2 = 10^2
+times_squared = [time_start + i*(time_end-time_start)/10 for i in 0:10]
+times_squared2 = [time_start2 + i*(time_end2-time_start2)/10 for i in 0:10]
+yaxis_times_linear = [(times_squared2[i])*0.04 for i in 1:length(times_squared)] #[(times_squared[i]^2)*0.001 for i in 1:length(times_squared)]
+yaxis_times_squared2 = [(times_squared2[i]^2)*(10^-1) for i in 1:length(times_squared2)]
+#plot(times_squared,yaxis_times_squared,"-k")
+plot(times_squared2,yaxis_times_squared2,"-k",label=latexstring("\$ t^2 \$"))
+plot(times_squared2,yaxis_times_linear,"-r",label=latexstring("\$ t \$"))
 
 legend()
 xscale("log")
 yscale("log")
 xlabel("Time")
 ylabel("MSD")
-title(latexstring("Mean Squared Deviation for range \$ \\alpha \$"))
+#title(latexstring("Mean Squared Deviation for range \$ \\alpha \$"))
 
 #= Price correlation to history
 hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.975]
