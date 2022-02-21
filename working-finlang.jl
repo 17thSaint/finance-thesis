@@ -43,18 +43,18 @@ function get_scale_inv_vals(h,lambda,gam)
 	return scaled_time,scaled_pos
 end
 
-function get_fractderiv(h,delta_t,steps,og_func,f0,noise_steps,cap=1)
+function get_fractderiv(h,delta_t,steps,og_func,f0,noise_steps,binom_part1,cap=1)
 	fract_deriv = [0.0 for i in 1:steps-1]
 	times = [i*delta_t for i in 1:steps-1]
 	for i in 1:steps-1
 		for j in 0:noise_steps*i
 			func_here = og_func[noise_steps*i-j+1] - cap*f0
-			fact_j = exp(sum([log(i) for i in 1:j]))
-			binom_part = gamma(3-2*h)/(fact_j*gamma(3-2*h-j))
+			#fact_j = exp(sum([log(i) for i in 1:j]))
+			#binom_part = gamma(3-2*h)/(fact_j*gamma(3-2*h-j))
+			binom_part = binom_part1[j+1]
 			fract_deriv[i] += ((-1)^(j))*binom_part*func_here/(delta_t/noise_steps)^(2-2*h)
 		end
 	end
-
 	return fract_deriv
 end
 
@@ -108,12 +108,13 @@ function get_goft(h,config,delta_t,noise,noise_steps,lambda,bets)
 	return g_of_t,velocity,accel,sliced_noise
 end
 
-function get_resids(h,config,delta_t,noise,noise_steps,lambda,bets,a)
+function get_resids(h,config,delta_t,noise,noise_steps,lambda,bets,a,binom_part1)
 	g_stuff = get_goft(h,config,delta_t,noise,noise_steps,lambda,bets)
 	#println("Got G(t)")
 	steps = length(config)
 	final_time = steps*delta_t
-	fract_deriv = [((i*delta_t)^(1-2*h))*get_fractderiv(h,delta_t,steps,config,0.0,noise_steps)[i] for i in 2:steps-1]
+	frac_part = get_fractderiv(h,delta_t,steps,config,0.0,noise_steps,binom_part1)
+	fract_deriv = [((i*delta_t)^(1-2*h))*frac_part[i] for i in 2:steps-1]
 	#println("Got Fract Deriv")
 	#scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
 	coeff = a*gamma(2*h)#*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
@@ -126,11 +127,11 @@ function move_position(num_times,chosen,step_size)
 	return shift_matrix
 end
 
-function acc_rej_move(config,h,lambda,bets,a,num_times,chosen,step_size,delta_t,noise,noise_steps,top_val)
-	start_resids = get_resids(h,config,delta_t,noise,noise_steps,lambda,bets,a)
+function acc_rej_move(config,h,lambda,bets,a,num_times,chosen,step_size,delta_t,noise,noise_steps,top_val,binom_part1)
+	start_resids = get_resids(h,config,delta_t,noise,noise_steps,lambda,bets,a,binom_part1)
 	shift_matrix = move_position(num_times,chosen,step_size)
 	#println(shift_matrix,config)
-	new_resids = get_resids(h,config+shift_matrix,delta_t,noise,noise_steps,lambda,bets,a)
+	new_resids = get_resids(h,config+shift_matrix,delta_t,noise,noise_steps,lambda,bets,a,binom_part1)
 	exp_diff = exp.(new_resids - start_resids)
 	#println(length(config)-2,", ",length(exp_diff))
 	#checking = [ exp_diff[i] <= top_val for i in 1:length(config)-2 ] #1.000001
@@ -138,7 +139,7 @@ function acc_rej_move(config,h,lambda,bets,a,num_times,chosen,step_size,delta_t,
 	if checking#all(checking)
 		return config+shift_matrix, 1#, new_resids, start_resids, shift_matrix
 	else
-		return config, 0, new_resids#, start_resids, shift_matrix
+		return config, 0, exp_diff[chosen-2]#, start_resids, shift_matrix
 	end
 	
 	return "Acceptance Calculation Error"
@@ -153,9 +154,12 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
 	time_resids = fill(0.0,(time_told-2,Int(steps/samp_freq)))
 	index = 1
+	index2 = 0
 	delta_t = t_fin/time_told
 	acc_rate = 0
 	num_wrong = [i+2 for i in 1:time_told-2]
+	fact_j = [exp(sum([log(i) for i in 1:j])) for j in 0:time_told]
+	binom_part1 = gamma(3-2*h).*[1/(fact_j[i]*gamma(3-2*h-(i-1))) for i in 1:length(fact_j)]
 	for i in 1:steps
 		
 		upper = 4
@@ -164,13 +168,14 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 		end
 		
 		for k in num_wrong[1:upper]
-			movement = acc_rej_move(running_config,h,lambda,bets,a,time_told,k,step_size,delta_t,noise,1,top_val)
+			movement = acc_rej_move(running_config,h,lambda,bets,a,time_told,k,step_size,delta_t,noise,1,top_val,binom_part1)
 			running_config = movement[1]
 			acc_rate += movement[2]
+			index2 += 1
 		end
 		num_wrong = []
 		
-		current_res = get_resids(h,running_config,delta_t,noise,noise_steps,lambda,bets,a)
+		current_res = get_resids(h,running_config,delta_t,noise,noise_steps,lambda,bets,a,binom_part1)
 		
 		# saving data every 10 steps
 		if i%samp_freq == 0
@@ -194,8 +199,8 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 		end
 		
 		# interface data
-		if i%(steps*0.001) == 0
-			println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,", Number Wrong: ",length(num_wrong),", H = $h")
+		if i%(steps*0.05) == 0
+			println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,"/",index2,", Number Wrong: ",length(num_wrong),", H = $h")
 		end
 	end
 	
@@ -246,57 +251,66 @@ function get_sd(soln) # squared displacement
 	return sd
 end
 
-function write_msd_data_hdf5(data,h)
+function write_data_hdf5(ver,data,h,final_time,count,lambda,bets,a)
 	println("Starting Data Write")
-	binary_file_pos = h5open("msd-vs-h-$h.hdf5","w")
-	create_group(binary_file_pos,"all-data")
-	alldata = binary_file_pos["all-data"]
-	alldata["msd"] = data
+	if ver == "msd"
+		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$count-lam-$lambda-bet-$bets-a-$a.hdf5","w")
+		create_group(binary_file_pos,"all-data")
+		alldata = binary_file_pos["all-data"]
+		alldata["msd"] = data
+	else
+		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$count-lam-$lambda-bet-$bets-a-$a.hdf5","w")
+		create_group(binary_file_pos,"all-data")
+		alldata = binary_file_pos["all-data"]
+		alldata["path"] = data
+	end
 	close(binary_file_pos)
 	println("Data Added, File Closed: $h")
 end
 
-function read_msd_hdf5_data(h)
-	file = h5open("msd-vs-h-$h.hdf5","r")
-	data = read(file["all-data"],"msd")
+function read_msd_hdf5_data(ver,h,final_time,time_count,lambda,bets,a)
+	file = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a.hdf5","r")
+	data = read(file["all-data"],ver)
 	return data
 end
 
 
 
-final_time = 1
-time_steps = 10
+final_time = 169
+time_steps = 169
 times = [i*final_time/time_steps for i in 0:time_steps-1]
-a = 1.0
+a = 0.5
 a0 = 0.0
 x0 = 0.0
 v0 = 0.0
 noise_steps = 1
 
 tol = 0.001
-mc_steps = 5000000
+mc_steps = 500000
 metro_val = 1.000001
-step_size = 0.0001#0.005
+step_size = 0.0075
 lambda = 5.0
-#h = 0.55
+#h = 0.75
 bets = 1.0
-
 
 #= expected value at given time
 selected_time = time_steps
-white_count = 1
-lambdas = [1.0 + i*10/10 for i in 0:10]
-hs = [0.55,0.75,0.95]
-counts_hs = [20,20,10]
-#=
-expected_price = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
-errors = [[0.0 for i in 1:length(lambdas)] for j in 1:length(hs)]
+white_count = 7
+#lambdas = [1.0 + i*10/10 for i in 0:10]
+as = [1.5*bets*lambda + i*5.5*bets*lambda/10 for i in 0:10]
+as_rel = [as[i]/(bets*lambda) for i in 1:length(as)]
+hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.95,0.975]
+counts_hs = [20,20,10,20,10,20,10,20,10,20,10,20,10,10,10,10,10,10,9]
+
+expected_price = [[0.0 for i in 1:length(as)] for j in 1:length(hs)]
+errors = [[0.0 for i in 1:length(as)] for j in 1:length(hs)]
 for l in 1:length(hs)
 	h = hs[l]
 	count = counts_hs[l]
-	for i in 1:length(lambdas)
+	for i in 1:1#length(as)
 		println(l,", ",i)
-		lambda = lambdas[i]
+		#lambda = lambdas[i]
+		a = as[3]#as[i]
 		local_expected_prices = []
 		for j in 1:count
 			colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
@@ -310,41 +324,73 @@ for l in 1:length(hs)
 		expected_price[l][i] = mean(local_expected_prices)
 		errors[l][i] = std(local_expected_prices)
 	end
-	errorbar(lambdas,expected_price[l],yerr=[errors[l],errors[l]],label="$h")
+	#total_counts = count*white_count
+	#errorbar(lambdas,expected_price[l],yerr=[errors[l],errors[l]],label="$total_counts")
 end
-legend()
-=#
-for i in 1:length(hs)
-	h = hs[i]
-	plot(lambdas,errors[i],label="$h")
-end
-#ylabel(latexstring("\$ \\mathbb{E} \$ [P(t=1)]"))
-#title("Expected Value of Price at t = 1 vs Liquidity")
-title("Variance of Expected Value vs Liquidity, range H")
-xlabel(latexstring("Market Liquidity, \$ \\lambda \$"))
 
+
+for i in 1:1#length(hs)
+	h = hs[i]
+	plot(hs,[errors[i][1] for i in 1:length(hs)])
+end
+#legend()
+
+#ylabel(latexstring("\$ \\mathbb{E} \$ [P(t=1)]"))
+ylabel("Volatility")
+#title("Expected Value of Price at t = 1 vs Liquidity")
+title("Volatility vs Hurst Parameter")
+#xlabel(latexstring("Market Liquidity, \$ \\lambda \$"))
+#xlabel(latexstring("\$ a / \\beta\\lambda\$"))
+xlabel("Hurst parameter, H")
+
+=#
+# volat_vs_h_lambda1.0 = [0.03532629342614326,0.028564641189068728,0.03525452953354956,0.025626495202568073,0.026894175157000696,0.025600327767250124,0.02628260457135696,0.027594002666838115,0.028244514978930213,0.024490799420920556,0.03496750211959252,0.027226628326523727,0.02666934331336109,0.022956596077158116,0.018288178038532128,0.02969355060967904,0.022257833983462684,0.022508391541704496,0.019910118360160132]
+# hs = hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.95,0.975]
 
 # errors = [[0.011123156136320799, 0.005113516536587368, 0.003229451912248103, 0.0023643448165093068, 0.0018743155764085202, 0.0015401585147341167, 0.0013137741339704504, 0.0011389413702820618, 0.001010775957045089, 0.0009048780704512181, 0.0008234191901862014],[0.010690379373428099, 0.005397942836544762, 0.0037371227273192815, 0.0028384420253396688, 0.002243368887067092, 0.0018625804539577845, 0.001584797556060686, 0.0013813023255170999, 0.0012193851039699265, 0.0010958038260582461, 0.000994683473608056],[0.014114381638318695, 0.007186096756963081, 0.004661006566537109, 0.0034527772937272797, 0.0027357279004645934, 0.0022620764057069624, 0.0019287586043179414, 0.0016841306345919099, 0.0014978804670156202, 0.0013424575102295678, 0.0012196607255481897]]
 # expected_price = [[0.020083749435273208, 0.011822895704126878, 0.009161463126122284, 0.0077296992383412534, 0.0068070261296105895, 0.00614618526352113, 0.005650622970025069, 0.005248321812828266, 0.004931353414387341, 0.004659398794969061, 0.0044310333860214015], [0.016375740156689002, 0.009920234258719204, 0.007817103162634124, 0.0067191781031230345, 0.006019442233483335, 0.00549891647905151, 0.005101905307731918, 0.004775247323544507, 0.004507313034934853, 0.004282254473072314, 0.00408722643500412], [0.02037188071247686, 0.011972135885754893, 0.009333159912950674, 0.007911678668445245, 0.006960053662540694, 0.006282737274525685, 0.005774241292109119, 0.005365755113685405, 0.005036202348615111, 0.004758759318343516, 0.004516900220451618]]
 
-=#
+
 
 # Mean squared displacement
-hs = [0.55,0.75,0.95]
+#hs = [0.95,0.75,0.55]
 #lambdas = [1.0,2.0,5.0]
-counts_hs = [3,3,3]
-selected = parse(Int64,ARGS[1])
+#counts_hs = [5,5,5]
+#selected = parse(Int64,ARGS[1])
+#h = hs[selected]
+#as = [0.1,1.0,2.5,5.0]
+#=
 msds = [[0.0 for j in 1:time_steps] for i in 1:length(hs)]
-white_noise = get_noise(0.5,time_steps,final_time,1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
-h = hs[selected]
-count = counts_hs[selected]
-for j in 1:count
-	colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
-	noise = white_noise + colored_noise
-	num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
-	msds[selected] += get_sd(num_soln[1])/count
+for i in 1:length(hs)
+	h = hs[i]
+	count = counts_hs[i]
+	for j in 1:count
+		white_noise = get_noise(0.5,time_steps,final_time,j+1).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+		colored_noise = get_noise(h,time_steps,final_time,j+1).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+		noise = white_noise + colored_noise
+		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+		msds[i] += get_sd(num_soln[1])/3
+		#write_data_hdf5("path",num_soln[1],h,final_time,time_steps,lambda,bets,a)
+	end
+	write_data_hdf5("msd",msds[i],h,final_time,count,lambda,bets,a)
+	alph = round(2-2*h,digits=2)
+	plot(times,msds[i],label="$alph")
 end
-write_msd_data_hdf5(msds[selected],h)
+=#
+
+for i in [0.5,1.0,2.0]
+	h = 0.55
+	alph = round(2-2*h,digits=2)
+	dats = read_msd_hdf5_data("msd",h,final_time,5,lambda,bets,i)
+	plot(times,dats,label="$i")
+end
+
+legend()
+xscale("log")
+yscale("log")
+xlabel("Time")
+ylabel("MSD")
+title(latexstring("Mean Squared Deviation for range \$ \\alpha \$"))
 
 #= Price correlation to history
 hs = [0.525,0.55,0.575,0.6,0.625,0.65,0.675,0.7,0.725,0.75,0.775,0.8,0.825,0.85,0.875,0.9,0.925,0.975]
