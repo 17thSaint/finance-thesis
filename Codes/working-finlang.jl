@@ -75,9 +75,9 @@ function get_first_guess(h,time_told,t_fin,lambda,bets,noise,x0,v0,noise_steps)
 	#scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
 	#first_coeff_scaled = lambda*scaled_coeffs[2]/(scaled_coeffs[1]^2)
 	for i in 1:time_steps
-		if i%(time_steps*0.01) == 0
-			println("Getting First Guess: ",100*i/time_steps," %")
-		end
+		#if i%(time_steps*0.01) == 0
+		#	println("Getting First Guess: ",100*i/time_steps," %")
+		#end
 		time_now = i*t_fin/time_told
 		times[i] = time_now
 		second_term[i] = v0*(1-exp(-bets*time_now)) + x0
@@ -213,7 +213,7 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 		end
 		
 		# interface data
-		if i%(steps*0.005) == 0
+		if i%(steps*0.01) == 0
 			println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,"/",index2,", Number Wrong: ",length(num_wrong),", H = $h")
 		end
 	end
@@ -269,7 +269,7 @@ function write_data_hdf5(ver,data,h,final_time,time_count,lambda,bets,a)
 	cd("..")
 	println("Starting Data Write")
 	if ver == "msd"
-		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-errors.hdf5","w")
+		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-errors-v0.hdf5","w")
 		create_group(binary_file_pos,"all-data")
 		alldata = binary_file_pos["all-data"]
 		alldata["msd"] = data[1]
@@ -287,8 +287,8 @@ end
 
 function read_msd_hdf5_data(ver,h,final_time,time_count,lambda,bets,a)
 	cd("..")
-	file = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a.hdf5","r")
-	data = read(file["all-data"],ver)
+	file = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-errors-v0.hdf5","r")
+	data = [read(file["all-data"],ver),read(file["all-data"],"errors")]
 	cd("Codes")
 	return data
 end
@@ -298,20 +298,21 @@ end
 final_time = 500
 time_steps = 500
 times = [i*final_time/time_steps for i in 0:time_steps-1]
-a = 1.0
+a = 3.5
 a0 = 0.0
 x0 = 0.0
-v0 = 0.0
+lambda = 5.0
+bets = 1.0
+kbt = 1.0
+v0 = sqrt(kbt/lambda)
 noise_steps = 5
 
-tol = 0.005
+tol = 0.05
 mc_steps = 5000000
 metro_val = 1.000001
 step_size = 0.01#0.00001
-lambda = 5.0
 #h = 0.75
 #alph = 2-2*h
-bets = 1.0
 
 
 #= expected value at given time
@@ -374,74 +375,85 @@ xlabel("Hurst parameter, H")
 
 
 # Mean squared displacement
-hs = [0.95,0.8,0.75,0.65,0.55]#0.7,0.85
+hs = [0.95,0.75,0.55]#[0.95,0.8,0.75,0.65,0.55,0.7,0.85]
 #lambdas = [1.0,2.0,5.0]
 counts_hs = [5,5,5,5,5,5,5]
 #selected = parse(Int64,ARGS[1])
 #h = hs[selected]
 #as = [0.1,1.0,2.5,5.0]
 
+#
 msds = [[0.0 for j in 1:time_steps] for i in 1:length(hs)]
 errors = [[0.0 for j in 1:time_steps] for i in 1:length(hs)]
-for i in 2:length(hs)
+for i in 1:length(hs)
 	h = hs[i]
-	count = counts_hs[i]
+	count = 3#counts_hs[i]
 	local_msds = fill(0.0,(time_steps,count))
 	for j in 1:count
-		white_noise = get_noise(0.5,time_steps,final_time,j).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
-		colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+		white_noise = get_noise(0.5,time_steps,final_time,j+5).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+		colored_noise = get_noise(h,time_steps,final_time,j+5).*fluc_dissp_coeffs("color",bets,lambda,a,h)
 		noise = white_noise + colored_noise
 		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
 		local_msds[:,j] = get_sd(num_soln[1])
 		#plot(times,num_soln[1],label="$h")
-		#write_data_hdf5("path",num_soln[1],h,final_time,time_steps,lambda,bets,a)
+		write_data_hdf5("path",num_soln[1],h,final_time,time_steps,lambda,bets,a)
 	end
 	msds[i] = [mean(local_msds[k,:]) for k in 1:time_steps]
 	errors[i] = [std(local_msds[k,:]) for k in 1:time_steps]
 	write_data_hdf5("msd",[msds[i],errors[i]],h,final_time,time_steps,lambda,bets,a)
 	alph = round(2-2*h,digits=2)
-	errorbar(times,msds[i],yerr=[errors[i],errors[i]],label="$alph")
-	#xscale("log")
-	#yscale("log")
+	#errorbar(times,msds[i],yerr=[errors[i],errors[i]],label="$alph")
+	plot(times,msds[i],label="$alph")
+	xscale("log")
+	yscale("log")
 end
 legend()
+#
 
+#plot(times,msds[1])
 
 #= including comparison lines for MSD
-for i in 7:7#length(hs)
+for i in 1:1#length(hs)
 	h = hs[i]
 	alph = round(2-2*h,digits=2)
-	dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,a)
+	dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,a)[1]
 	plot(times,dats)#,label="$alph")
-	title(latexstring("Mean Squared Deviation \$ \\alpha \$ = $alph"))
+	#title(latexstring("Mean Squared Deviation range \$ \\alpha \$ with \$ v_0 \$"))
 end
 =#
 #=
-time_start_cubed_short = 2*10^(-1)
-time_end_cubed_short = 8*10^(-1)
-time_start_squared_short = 2*10^(0)
-time_end_squared_short = 8*10^(0)
+xscale("log")
+yscale("log")
+time_start_cubed_short = 4*10^(-1)
+time_end_cubed_short = 6*10^(-1)
+time_start_squared_short = 2*10^(-1)
+time_end_squared_short = 5*10^(-1)
 times_squared_shorttime = [time_start_squared_short + i*(time_end_squared_short-time_start_squared_short)/10 for i in 0:10]
 times_cubed_shorttime = [time_start_cubed_short + i*(time_end_cubed_short-time_start_cubed_short)/10 for i in 0:10]
-yaxis_times_squared_shorttime = [(times_squared_shorttime[i]^2)*(10^-3.5) for i in 1:length(times_squared_shorttime)]
-yaxis_times_cubed_shorttime = [(times_cubed_shorttime[i]^3)*(10^-5) for i in 1:length(times_cubed_shorttime)]
+yaxis_times_squared_shorttime = [(times_squared_shorttime[i]^2)*(10^(-0.5)) for i in 1:length(times_squared_shorttime)]
+yaxis_times_cubed_shorttime = [(times_cubed_shorttime[i]^3)*(10^(-1.0)) for i in 1:length(times_cubed_shorttime)]
 plot(times_squared_shorttime,yaxis_times_squared_shorttime,"-k",label=latexstring("\$ t^2 \$"))
 plot(times_cubed_shorttime,yaxis_times_cubed_shorttime,"-r",label=latexstring("\$ t^3 \$"))
+legend()
 =#
 #=
-h = 0.7
-alph = 2-2*h
+h = hs[7]
+alph = round(2-2*h,digits=2)
+dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,a)[1]
+plot(times,dats)#,label="$alph")
+title(latexstring("Mean Squared Deviation \$ \\alpha = $alph \$ with \$ v_0 \$"))
 time_start_longtime = 1*10^(2)#2.5*10^(1)
 time_end_longtime = 4*10^(2)#10^(2)
 times_squared_longtime = [time_start_longtime + i*(time_end_longtime-time_start_longtime)/10 for i in 0:10]
 #yaxis_times_linear = [(times_squared2[i])*0.04 for i in 1:length(times_squared)] #[(times_squared[i]^2)*0.001 for i in 1:length(times_squared)]
-yaxis_times_squared_longtime = [(times_squared_longtime[i]^(2-alph))*(10^-2) for i in 1:length(times_squared_longtime)]
-plot(times_squared_longtime,yaxis_times_squared_longtime,"-k",label=latexstring("\$ t^{2-\\alpha} \$"))
-#plot(times_squared,yaxis_times_linear,"-r",label=latexstring("\$ t \$"))
+yaxis_times_2malph_longtime = [(times_squared_longtime[i]^(2-alph))*(10^-2.0) for i in 1:length(times_squared_longtime)]
+yaxis_times_squared_longtime = [(times_squared_longtime[i]^(2))*(10^-3.5) for i in 1:length(times_squared_longtime)]
+plot(times_squared_longtime,yaxis_times_2malph_longtime,"-r",label=latexstring("\$ t^{2-\\alpha} \$"))
+#plot(times_squared_longtime,yaxis_times_squared_longtime,"-k",label=latexstring("\$ t^{2} \$"))
 
-#legend()
-#xscale("log")
-#yscale("log")
+legend()
+xscale("log")
+yscale("log")
 xlabel("Time")
 ylabel("MSD")
 #title(latexstring("Mean Squared Deviation for range \$ \\alpha \$"))
