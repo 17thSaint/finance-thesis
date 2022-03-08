@@ -3,7 +3,7 @@
 #import Pkg; Pkg.add("Statistics")
 #import Pkg; Pkg.add("MittagLeffler")
 using HDF5,SpecialFunctions,PyPlot,Statistics,MittagLeffler,LaTeXStrings
-
+include("find-input")
 
 function fluc_dissp_coeffs(which,bets,lambda,a,h,kBT=1,sigma0=1)
 	if which == "white"
@@ -155,10 +155,14 @@ function acc_rej_move(config,h,lambda,bets,a,num_times,chosen,step_size,delta_t,
 	return "Acceptance Calculation Error"
 end
 
-function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noise_steps,x0,v0,top_val)
+function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noise_steps,x0,v0,top_val,starting_input=[false,[0.0]])
 	#println("Starting")
 	# getting first config from first guess
-	running_config = append!([0.0],get_first_guess(h,time_told,t_fin,lambda,bets,noise,x0,v0,noise_steps)[2][2:time_told])
+	if starting_input[1]
+		running_config = append!(starting_input[2],get_first_guess(h,time_told,t_fin,lambda,bets,noise,x0,v0,noise_steps)[2][length(starting_input[2])+1:time_told])
+	else
+		running_config = append!([0.0],get_first_guess(h,time_told,t_fin,lambda,bets,noise,x0,v0,noise_steps)[2][2:time_told])
+	end
 	# only save configuration data for every 10 attempted movements
 	samp_freq = Int(0.01*steps)
 	time_config = fill(0.0,(time_told,Int(steps/samp_freq)))
@@ -213,7 +217,7 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 		end
 		
 		# interface data
-		if i%(steps*0.01) == 0
+		if i%(steps*0.001) == 0
 			println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,"/",index2,", Number Wrong: ",length(num_wrong),", H = $h")
 		end
 	end
@@ -265,30 +269,39 @@ function get_sd(soln) # squared displacement
 	return sd
 end
 
-function write_data_hdf5(ver,data,h,final_time,time_count,lambda,bets,a)
+function write_data_hdf5(ver,data,h,final_time,time_count,lambda,bets,a,avg_count=1,which=1)
 	cd("..")
+	cd("fin-data")
 	println("Starting Data Write")
 	if ver == "msd"
-		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-errors-v0.hdf5","w")
+		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-errors-v0-avg-$avg_count.hdf5","w")
 		create_group(binary_file_pos,"all-data")
 		alldata = binary_file_pos["all-data"]
 		alldata["msd"] = data[1]
 		alldata["errors"] = data[2]
 	else
-		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a.hdf5","w")
+		binary_file_pos = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-which-$which.hdf5","w")
 		create_group(binary_file_pos,"all-data")
 		alldata = binary_file_pos["all-data"]
 		alldata["path"] = data
 	end
 	close(binary_file_pos)
+	cd("..")
 	cd("Codes")
 	println("Data Added, File Closed: $h")
 end
 
-function read_msd_hdf5_data(ver,h,final_time,time_count,lambda,bets,a)
+function read_msd_hdf5_data(ver,h,final_time,time_count,lambda,bets,a,avg_count=1,which=1)
 	cd("..")
-	file = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-errors-v0.hdf5","r")
-	data = [read(file["all-data"],ver),read(file["all-data"],"errors")]
+	cd("fin-data")
+	if ver == "msd"
+		file = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-errors-v0-avg-$avg_count.hdf5","r")
+		data = [read(file["all-data"],ver),read(file["all-data"],"errors")]
+	else
+		file = h5open("$ver-h-$h-ft-$final_time-points-$time_count-lam-$lambda-bet-$bets-a-$a-which-$which.hdf5","r")
+		data = read(file["all-data"],ver)
+	end
+	cd("..")
 	cd("Codes")
 	return data
 end
@@ -298,14 +311,14 @@ end
 final_time = 500
 time_steps = 500
 times = [i*final_time/time_steps for i in 0:time_steps-1]
-a = 3.5
+a = 1.0
 a0 = 0.0
 x0 = 0.0
 lambda = 5.0
 bets = 1.0
 kbt = 1.0
 v0 = sqrt(kbt/lambda)
-noise_steps = 5
+noise_steps = 1
 
 tol = 0.05
 mc_steps = 5000000
@@ -375,9 +388,9 @@ xlabel("Hurst parameter, H")
 
 
 # Mean squared displacement
-hs = [0.95,0.75,0.55]#[0.95,0.8,0.75,0.65,0.55,0.7,0.85]
+hs = [0.9,0.85,0.6]#[0.95,0.8,0.75,0.65,0.55,0.7,0.85]
 #lambdas = [1.0,2.0,5.0]
-counts_hs = [5,5,5,5,5,5,5]
+counts_hs = [10,10,10]
 #selected = parse(Int64,ARGS[1])
 #h = hs[selected]
 #as = [0.1,1.0,2.5,5.0]
@@ -387,20 +400,33 @@ msds = [[0.0 for j in 1:time_steps] for i in 1:length(hs)]
 errors = [[0.0 for j in 1:time_steps] for i in 1:length(hs)]
 for i in 1:length(hs)
 	h = hs[i]
-	count = 3#counts_hs[i]
+	count = counts_hs[i]
 	local_msds = fill(0.0,(time_steps,count))
 	for j in 1:count
-		white_noise = get_noise(0.5,time_steps,final_time,j+5).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
-		colored_noise = get_noise(h,time_steps,final_time,j+5).*fluc_dissp_coeffs("color",bets,lambda,a,h)
+		white_noise = get_noise(0.5,time_steps,final_time,j).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
+		colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
 		noise = white_noise + colored_noise
-		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
+		
+		cd("..")
+		cd("fin-data")
+		check_ifinput = get_input_path(h,lambda,bets,a,j)
+		cd("..")
+		cd("Codes")
+		if check_ifinput[1]
+			og_dats = read_msd_hdf5_data("path",h,check_ifinput[3],check_ifinput[2],lambda,bets,a,1,j)
+		else
+			og_dats = [0.0]
+		end
+		starting_input = [check_ifinput[1],og_dats]
+		
+		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val,starting_input)
 		local_msds[:,j] = get_sd(num_soln[1])
 		#plot(times,num_soln[1],label="$h")
-		write_data_hdf5("path",num_soln[1],h,final_time,time_steps,lambda,bets,a)
+		write_data_hdf5("path",num_soln[1],h,final_time,time_steps,lambda,bets,a,1,j)
 	end
 	msds[i] = [mean(local_msds[k,:]) for k in 1:time_steps]
 	errors[i] = [std(local_msds[k,:]) for k in 1:time_steps]
-	write_data_hdf5("msd",[msds[i],errors[i]],h,final_time,time_steps,lambda,bets,a)
+	write_data_hdf5("msd",[msds[i],errors[i]],h,final_time,time_steps,lambda,bets,a,count)
 	alph = round(2-2*h,digits=2)
 	#errorbar(times,msds[i],yerr=[errors[i],errors[i]],label="$alph")
 	plot(times,msds[i],label="$alph")
