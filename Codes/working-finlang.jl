@@ -3,7 +3,7 @@
 #import Pkg; Pkg.add("Statistics")
 #import Pkg; Pkg.add("MittagLeffler")
 using HDF5,SpecialFunctions,PyPlot,Statistics,MittagLeffler,LaTeXStrings
-include("find-input")
+include("find-input.jl")
 
 function fluc_dissp_coeffs(which,bets,lambda,a,h,kBT=1,sigma0=1)
 	if which == "white"
@@ -120,10 +120,11 @@ function get_resids(h,config,delta_t,noise,noise_steps,lambda,bets,a,binom_part1
 	steps = upper_bound#length(config)
 	final_time = steps*delta_t
 	frac_part = get_fractderiv(h,delta_t,steps,config,0.0,noise_steps,binom_part1)
-	fract_deriv = [((i*delta_t)^(1-2*h))*frac_part[i] for i in 2:steps-1]
+	time_coeff_fractderiv = [1.0 for i in 2:steps-1]#[((i*delta_t)^(1-2*h)) for i in 2:steps-1]
+	fract_deriv = [time_coeff_fractderiv[i-1]*frac_part[i] for i in 2:steps-1]
 	#println("Got Fract Deriv")
 	#scaled_coeffs = get_scale_inv_vals(h,lambda,gam)
-	coeff = a*gamma(2*h)#*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
+	coeff = a#*gamma(2*h)#*scaled_coeffs[2]*(scaled_coeffs[1]^(2*h-2))
 	return abs.(g_stuff[1][1:upper_bound-2]-coeff.*fract_deriv)#,g_stuff[1],coeff.*fract_deriv
 end
 
@@ -217,8 +218,9 @@ function main_here(tol,steps,step_size,h,time_told,t_fin,lambda,bets,a,noise,noi
 		end
 		
 		# interface data
-		if i%(steps*0.001) == 0
+		if i%(steps*0.01) == 0
 			println("Running:"," ",100*i/steps,"%, ","Acceptance: ",acc_rate,"/",index2,", Number Wrong: ",length(num_wrong),", H = $h")
+			#plot(running_config)
 		end
 	end
 	
@@ -233,6 +235,13 @@ function get_avg_price_jump(series)
 		avg_jump[i] = abs(series[i+1]-series[i])
 	end
 	return mean(avg_jump),std(avg_jump)
+end
+
+function get_alpha_coeff(alpha)
+	num = gamma((1+alpha)/2)*gamma((3-alpha))
+	denom = gamma(2-alpha)*gamma(alpha)
+	result = sqrt(num/denom)
+	return result
 end
 
 function auto_correlation(energies, delta_t)
@@ -314,16 +323,16 @@ times = [i*final_time/time_steps for i in 0:time_steps-1]
 a = 1.0
 a0 = 0.0
 x0 = 0.0
-lambda = 5.0
+lambda = 50.0
 bets = 1.0
 kbt = 1.0
 v0 = sqrt(kbt/lambda)
 noise_steps = 1
 
-tol = 0.05
+tol = 0.01
 mc_steps = 5000000
 metro_val = 1.000001
-step_size = 0.01#0.00001
+step_size = 0.1#0.00001
 #h = 0.75
 #alph = 2-2*h
 
@@ -388,9 +397,104 @@ xlabel("Hurst parameter, H")
 
 
 # Mean squared displacement
-hs = [0.9,0.85,0.6]#[0.95,0.8,0.75,0.65,0.55,0.7,0.85]
+hs = [0.95,0.75,0.55]
 #lambdas = [1.0,2.0,5.0]
-counts_hs = [10,10,10]
+counts_hs = [10 for i in 1:length(hs)]
+#=
+lambda = 5.0#[0.1 + i*1.9/20 for i in 0:19]
+as = [0.1 + i*2.8/20 for i in 0:19]#[0.1 + i*4.8/20 for i in 0:19]#1.0 .* lambdas
+betss = [0.1 + i*0.5/20 for i in 0:19]
+alphas = sort([2-2*hs[i] for i in 1:length(hs)])
+
+alphas_lwbig_tcbig = []
+as_lwbig_tcbig = []
+betss_lwbig_tcbig = []
+
+alphas_lwbig_twbig = []
+as_lwbig_twbig = []
+betss_lwbig_twbig = []
+
+alphas_lwbig_teq = []
+as_lwbig_teq = []
+betss_lwbig_teq = []
+
+
+alphas_lcbig_tcbig = []
+as_lcbig_tcbig = []
+betss_lcbig_tcbig = []
+
+alphas_lcbig_twbig = []
+as_lcbig_twbig = []
+betss_lcbig_twbig = []
+
+alphas_lcbig_teq = []
+as_lcbig_teq = []
+betss_lcbig_teq = []
+
+for k in 1:length(betss)
+	bets = betss[k]
+	tw = 1/bets
+	for j in 1:length(alphas)
+		alpha = alphas[j]
+		for i in 1:length(as)
+			a = as[i]
+			tc = lambda/a
+			lw = sqrt(2)/(bets*sqrt(lambda))
+			lc = (sqrt(2*lambda)/a)*get_alpha_coeff(alpha)
+			if lw > lc
+				if tw > tc
+					append!(alphas_lwbig_twbig,[alpha])
+					append!(as_lwbig_twbig,[a])
+					append!(betss_lwbig_twbig,[bets])
+				elseif tw < tc
+					append!(alphas_lwbig_tcbig,[alpha])
+					append!(as_lwbig_tcbig,[a])
+					append!(betss_lwbig_tcbig,[bets])
+				elseif tw == tc
+					append!(alphas_lwbig_teq,[alpha])
+					append!(as_lwbig_teq,[a])
+					append!(betss_lwbig_teq,[bets])
+				end
+			elseif lw < lc
+				if tw > tc
+					println(alpha,", ",a,", ",bets)
+					append!(alphas_lcbig_twbig,[alpha])
+					append!(as_lcbig_twbig,[a])
+					append!(betss_lcbig_twbig,[bets])
+				elseif tw < tc
+					append!(alphas_lcbig_tcbig,[alpha])
+					append!(as_lcbig_tcbig,[a])
+					append!(betss_lcbig_tcbig,[bets])
+				elseif tw == tc
+					append!(alphas_lcbig_teq,[alpha])
+					append!(as_lcbig_teq,[a])
+					append!(betss_lcbig_teq,[bets])
+				end
+			end
+		end
+	end
+end
+#=
+scatter(alphas_lwbig_twbig,betss_lwbig_twbig,c="b",label="lw>lc,tw>tc")
+scatter(alphas_lcbig_twbig,betss_lcbig_twbig,c="r",label="lw<lc,tw>tc")
+scatter(alphas_lwbig_tcbig,betss_lwbig_tcbig,c="g",label="lw>lc,tw<tc")
+scatter(alphas_lcbig_tcbig,betss_lcbig_tcbig,c="c",label="lw<lc,tw<tc")
+scatter(alphas_lwbig_teq,betss_lwbig_teq,c="k",label="lw>lc,tw=tc")
+scatter(alphas_lcbig_teq,betss_lcbig_teq,c="m",label="lw<lc,tw=tc")
+=#
+#
+scatter3D(as_lwbig_twbig,alphas_lwbig_twbig,betss_lwbig_twbig,c="b",label="lw>lc,tw>tc")
+scatter3D(as_lcbig_twbig,alphas_lcbig_twbig,betss_lcbig_twbig,c="r",label="lw<lc,tw>tc")
+scatter3D(as_lwbig_tcbig,alphas_lwbig_tcbig,betss_lwbig_tcbig,c="g",label="lw>lc,tw<tc")
+scatter3D(as_lcbig_tcbig,alphas_lcbig_tcbig,betss_lcbig_tcbig,c="c",label="lw<lc,tw<tc")
+scatter3D(as_lwbig_teq,alphas_lwbig_teq,betss_lwbig_teq,c="k",label="lw>lc,tw=tc")
+scatter3D(as_lcbig_teq,alphas_lcbig_teq,betss_lcbig_teq,c="m",label="lw<lc,tw=tc")
+#
+xlabel("A")
+ylabel("Alpha")
+zlabel("Beta")
+legend()
+=#
 #selected = parse(Int64,ARGS[1])
 #h = hs[selected]
 #as = [0.1,1.0,2.5,5.0]
@@ -405,8 +509,8 @@ for i in 1:length(hs)
 	for j in 1:count
 		white_noise = get_noise(0.5,time_steps,final_time,j).*fluc_dissp_coeffs("white",bets,lambda,a,0.5)
 		colored_noise = get_noise(h,time_steps,final_time,j).*fluc_dissp_coeffs("color",bets,lambda,a,h)
-		noise = white_noise + colored_noise
-		
+		noise = white_noise - colored_noise
+		#
 		cd("..")
 		cd("fin-data")
 		check_ifinput = get_input_path(h,lambda,bets,a,j)
@@ -418,12 +522,13 @@ for i in 1:length(hs)
 			og_dats = [0.0]
 		end
 		starting_input = [check_ifinput[1],og_dats]
-		
-		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val,starting_input)
+		#
+		num_soln = main_here(tol,mc_steps,step_size,h,time_steps,final_time,lambda,bets,a,noise,1,x0,v0,metro_val)
 		local_msds[:,j] = get_sd(num_soln[1])
 		#plot(times,num_soln[1],label="$h")
 		write_data_hdf5("path",num_soln[1],h,final_time,time_steps,lambda,bets,a,1,j)
 	end
+	#
 	msds[i] = [mean(local_msds[k,:]) for k in 1:time_steps]
 	errors[i] = [std(local_msds[k,:]) for k in 1:time_steps]
 	write_data_hdf5("msd",[msds[i],errors[i]],h,final_time,time_steps,lambda,bets,a,count)
@@ -432,6 +537,7 @@ for i in 1:length(hs)
 	plot(times,msds[i],label="$alph")
 	xscale("log")
 	yscale("log")
+	#
 end
 legend()
 #
@@ -439,12 +545,23 @@ legend()
 #plot(times,msds[1])
 
 #= including comparison lines for MSD
-for i in 1:1#length(hs)
+for i in 4:6
+	which_bets = 2
+	tcomp = "tw < tc"
+	if which_bets == 1
+		tcomp = "tw > tc"
+	end
+	bets = betss[which_bets]
+	lcomp = "lw < lc"
+	if i > 3
+		lcomp = "lw > lc"
+	end
 	h = hs[i]
 	alph = round(2-2*h,digits=2)
-	dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,a)[1]
-	plot(times,dats)#,label="$alph")
-	#title(latexstring("Mean Squared Deviation range \$ \\alpha \$ with \$ v_0 \$"))
+	dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,a,5)[1]
+	plot(times,dats,label="$alph")
+	title("MSD for $tcomp and $lcomp")
+	#title(latexstring("Mean Squared Deviation \$ \\alpha = $alph \$ with \$ v_0 \$"))
 end
 =#
 #=
@@ -463,18 +580,25 @@ plot(times_cubed_shorttime,yaxis_times_cubed_shorttime,"-r",label=latexstring("\
 legend()
 =#
 #=
-h = hs[7]
+hs = [0.95,0.75,0.55]
+h = hs[3]
 alph = round(2-2*h,digits=2)
-dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,a)[1]
+dats = read_msd_hdf5_data("msd",h,final_time,time_steps,lambda,bets,a,5)[1]
 plot(times,dats)#,label="$alph")
 title(latexstring("Mean Squared Deviation \$ \\alpha = $alph \$ with \$ v_0 \$"))
-time_start_longtime = 1*10^(2)#2.5*10^(1)
-time_end_longtime = 4*10^(2)#10^(2)
+=#
+#=
+time_start_longtime = 1*10^(1)#2.5*10^(1)
+time_end_longtime = 4*10^(1)#10^(2)
 times_squared_longtime = [time_start_longtime + i*(time_end_longtime-time_start_longtime)/10 for i in 0:10]
+#alph = 0
 #yaxis_times_linear = [(times_squared2[i])*0.04 for i in 1:length(times_squared)] #[(times_squared[i]^2)*0.001 for i in 1:length(times_squared)]
-yaxis_times_2malph_longtime = [(times_squared_longtime[i]^(2-alph))*(10^-2.0) for i in 1:length(times_squared_longtime)]
-yaxis_times_squared_longtime = [(times_squared_longtime[i]^(2))*(10^-3.5) for i in 1:length(times_squared_longtime)]
-plot(times_squared_longtime,yaxis_times_2malph_longtime,"-r",label=latexstring("\$ t^{2-\\alpha} \$"))
+#yaxis_times_2malph_longtime = [(times_squared_longtime[i]^(2-alph))*(10^-0.5) for i in 1:length(times_squared_longtime)]
+#yaxis_times_2palph_longtime = [(times_squared_longtime[i]^(2+alph))*(10^1.7) for i in 1:length(times_squared_longtime)]
+yaxis_times_squared_longtime = [(times_squared_longtime[i]^(2))*(10^0.3) for i in 1:length(times_squared_longtime)]
+#plot(times_squared_longtime,yaxis_times_2malph_longtime,"-r",label=latexstring("\$ t^{2-\\alpha} \$"))
+plot(times_squared_longtime,yaxis_times_squared_longtime,"-k",label=latexstring("\$ t^{2} \$"))
+#plot(times_squared_longtime,yaxis_times_2palph_longtime,"-r",label=latexstring("\$ t^{2+\\alpha} \$"))
 #plot(times_squared_longtime,yaxis_times_squared_longtime,"-k",label=latexstring("\$ t^{2} \$"))
 
 legend()

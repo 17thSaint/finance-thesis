@@ -9,13 +9,13 @@ function get_input_path(h,lambda,bets,a,which)
 			continue
 		end
 		h_here = parse(Float64,separated[3])
-		ft_here = parse(Float64,separated[5])
-		timecount_here = parse(Float64,separated[7])
+		ft_here = parse(Int,separated[5])
+		timecount_here = parse(Int,separated[7])
 		lambda_here = parse(Float64,separated[9])
 		bets_here = parse(Float64,separated[11])
 		a_here = parse(Float64,separated[13])
 		which_here = parse(Float64,split(separated[15],".")[1])
-		if h == h_here && lambda_here == lambda && bets == bets_here && a == a_here
+		if h == h_here && lambda_here == lambda && bets == bets_here && a == a_here && which_here == which
 			return true,timecount_here, ft_here
 		end
 	end
