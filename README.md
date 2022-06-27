@@ -17,6 +17,18 @@ j
 f(t-jh)
 $$
 
+For this project, the Caputo form of the fractional derivative is used because it has the most effective inclusion of memory in its definition.  It is given by 
+
+$${}^{C} D_{a+}^{\alpha} f(t) = \frac{1}{\Gamma(n-\alpha)} \int_{a}^{t} d\tau \frac{f^{(n)}(\tau)}{(t-\tau)^{\alpha-n+1}}, \quad n-1 < \alpha < n.$$
+
+The Caputo form can also be calculated from the RL and GL forms using the following relation
+
+$${}^{RL} D_{a}^{\alpha} f(t) = \sum_{k=0}^{n-1} \frac{f^{(k)}(a) (t-a)^{k-\alpha}}{\Gamma(k-\alpha+1)} + {}^{C} D_{a}^{\alpha} f(t).$$
+
 ## Fractional Brownian Motion
 
 ## The Financial Model
+
+## Monte Carlo Solution Finder
+
+## Results
