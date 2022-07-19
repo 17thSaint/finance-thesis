@@ -4,6 +4,10 @@ This README is a shortened version of the full report for this research project.
 
 In this project, I studied how memory can be included in the modeling of a financial system by using fractional calculus and fractional Brownian motion.  This research project was part of the Complex Systems profile during my MSc degree in Theoretical Physics at Utrecht University.  Brownian motion has long been used to model financial systems and fractional Brownian motion models have recently been used to exmaine the roughness of volatility.  However, these models all use analytical methods native to the financial sector.  This project used physics-based analysis tools including phase bevahior and dispersion relations, to study a financial model that includes memory.
 
+<p align="center">
+  <img src="Codes/figures-git/bitcoin-msd-titlepage.png" width="400">
+</p>
+
 ## Fractional Calculus
 There is no single method of extending regular calculus to fractional orders which means that there are a variety of definitions of the fractional derivative that are not always equivalent.  This project focuses on three of the most common versions: the Riemann-Liouville form, the Grünwald-Letnikov form, and the Caputo form.  The oldest of which is the Riemann-Liouville form whose derivative of order $\alpha$ is given by
 
