@@ -1,5 +1,7 @@
 # Modeling a Financial System with Memory
 
+This README is a shortened version of the full report for this research project.
+
 In this project, I studied how memory can be included in the modeling of a financial system by using fractional calculus and fractional Brownian motion.  This research project was part of the Complex Systems profile during my MSc degree in Theoretical Physics at Utrecht University.  Brownian motion has long been used to model financial systems and fractional Brownian motion models have recently been used to exmaine the roughness of volatility.  However, these models all use analytical methods native to the financial sector.  This project used physics-based analysis tools including phase bevahior and dispersion relations, to study a financial model that includes memory.
 
 ## Fractional Calculus
