@@ -204,7 +204,6 @@ With these two components, we essentially have a particle, our price, interactin
 
 $$
 \lambda \frac{d^2 x}{dt^2} + \beta \lambda \frac{dx}{dt} - a D^{\alpha} \big[ x(t) \big] = \eta(t) - \xi_{\alpha} (t),
-\label{eq:fin-lang-eq}
 $$
 
 An interesting side-note would be that the values for $\Theta_1$ and $\Theta_2$ are given by the fluctuation-dissipation theorem and are based on the financial system responding to noise in an expected manner.  It would be interesting to investigate an out-of-equilibrium system when those values for $\Theta_1$ and $\Theta_2$ do not hold, especially given the work in Robin Verstraten's master's thesis on out-of-equilibrium systems.
@@ -247,7 +246,9 @@ Unless otherwise specified, the system begins with an initial velocity which is 
 ### Liquidity and Volatility
 As previously discussed, the liquidity of a given financial market plays an important role in the volatility of that market.  Therefore it is important that our model reproduces these same relationship.  One definition of volatility is the variance over a finite period of time, and is because the MSD is equivalent to the variance, the MSD can be used to calculate volatility.
 
-volat-liquid figure
+<p align="center">
+  <img src="Codes/figures-git/liquidity-volat-range-alpha.png" width="400">
+</p>
 
 Figure volat-liquid shows the 100-time-step volatility as a function the market liquidity parameter, $\lambda$, for a few values of the fractional derivative order $\alpha$ where all other parameters are kept the same.  As expected, as the market liquidity increases, the finite time volatility decreases showing that more liquid markets are more stable than less liquid markets.  The error bars here are quite large because the volatility comes from the MSD which is only averaged over 20 paths.  This comes from the computational limits of our simulation.  However, the trend between liquidity and volatility is still clear enough to say the relationship does exist.
 
@@ -265,20 +266,26 @@ From Lutz, when the Langevin equation contains just a fractional derivative and 
 However, because our system contains both a fractional derivative and an integer derivative, there exists more complex interactions between these terms. From the master's thesis of Robin Verstraten we also know what happens with a fractional derivative interacting with a white noise term.  The interaction is out-of-equilibrium behavior which does not follow the fluctuation-dissipation theorem, but instead has meta-stable states as a function of the fractional derivative order, $\alpha$.  The long-term scaling of the MSD then goes as $t^{2\alpha-1}$ which is why it is shown for comparison in the table of all MSDs.
 
 ### Dispersion Regions
-
-figure msd 0p2
+<p align="center">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p2.png" width="400">
+</p>
 
 The figure above shows the MSD for a fractional derivative order of $\alpha=0.2$, which has a positive correlation to history, and a finite initial velocity.  The figure shows three distinct regions each with different dispersion relations.  At the start, the curve goes as $t^2$ which is ballistic dispersion.  These are the times where the trace "particle" is exploring the environment and does not yet have any memory.
 
 The third region, at the end, is the long-term behavior of the system.  In the case of $\alpha=0.2$, the dispersion goes as $t^{2-\alpha}$.  A discussion of the properties of this phase will follow.  Between the beginning exploratory behavior and the long-term behavior, there is a transition region.  Here, the MSD plateaus becoming a constant which implies more solid-like behavior.  We believe this is where the system is building up more and more memory.  The memory is still quite small, thus it has very little impact on the dynamics.  Once the memory has built up to a significant enough level, the system moves into the third region which displays the dynamics of a system with memory.  The MSD figure with no memorry shows that for a system with no memory and there is no middle transition region.  Therefore, the existence of a transition region appears tied to the inclusion of memory in the system.  For regular Brownian motion, the scaling relation with time is just linear and this is exactly the long-term behavior seen in the figure.
 
-figure no memory
+<p align="center">
+  <img src="Codes/figures-git/msd-nomem-exact-1.png" width="400">
+</p>
 
 From a financial perspective, this could mean that there is a reaction time and shape associated to a given financial system.  
 
 ### Long-term Phase Behavior
 
-figure 0.3 and 0.4
+<p align="center">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p3-long.png" width="400">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p4-long.png" width="400">
+</p>
 
 The figure above shows the MSD curves for two values of $\alpha$ both with finite initial velocity.  In the third region, which corresponds to the long-term phase behavior, the two curves follow different dispersion relations.  For $\alpha=0.3$, it scales as $t^{2-\alpha}$ while for $\alpha=0.4$ it scales as $t^{\alpha}$.  It appears that around these values of $\alpha$ the dynamics of the dispersion change into a different form of anomalous diffusion.  In Figure \ref{fig:msd-phases-trans}, $\alpha=0.4$ does look close to linear scaling, but the MSD table shows the full range of $\alpha$ parameters.  After $\alpha=0.4$, it can be seen that the MSD scales as $t^{\alpha}$ for the rest of the $\alpha$ values.
 
@@ -289,10 +296,13 @@ The MSD appears to move from flatter regions, which are more glass-like behavior
 
 It is difficult to say what these cages represent in a financial system as the system is very complex and we will not take a random guess with sufficient reasoning behind the analysis.  However, if these regions can be understood and recognized, it could lead to a better understanding of changes in market dynamics.
 
-figure 0.18 and 0.6
+<p align="center">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p18.png" width="400">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p6-long.png" width="400">
+</p>
 
 
-\subsection{Oscillatory Behavior}
+#### Oscillatory Behavior
 As the fractional derivative order increases, the strength of the memory increases as well; memory becomes more important.  The figure above shows MSD plots for $\alpha=0.18$ and $0.6$ with all other parameters kept the same.  For larger values of $\alpha$, there appears to be larger oscillations in the MSD.  This leads us to believe that, in a rudimentary way, it is the memory that induces oscillations in the MSD.
 
 There is not enough precision is our calculations to say whether these oscillations are truly periodic or if they are random.  However, the existence of large changes in the MSD can be seen as changes in the volatility over time.  Volatility is in part a reflection of the confidence users have in a given financial market; high volatility means users are unsure about the future while low volatility means high confidence in future expectations.  Because the volatility calculated in this way comes from historical information about the asset price, it is the realized volatility.
@@ -307,6 +317,23 @@ Given our expectations for the scaling of the MSD, we now analyze the simulation
 For $\alpha = 0.2$ and $0.3$, the scaling is clearly $t^{2-\alpha}$, while as $\alpha$ increases the scaling gets closer to $t^{\alpha}$.  This leads us to believe that, qualitatively, the integer derivative interaction with colored noise leads to the $t^{2-\alpha}$ behavior.
 
 The dispersion relation does transition between these different phases.  However the path by which it does this is unclear.  The complexity of having many terms in the differential equation means that it is difficult to analytically describe the transition behavior.  More extensive research would be required to analyze the equation and understand the expected asymptotic behavior and its transition as a function of $\alpha$.
+
+<p align="center">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p2.png" width="400">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p3-long.png" width="400">
+</p>
+<p align="center">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p4-long.png" width="400">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p5-long.png" width="400">
+</p>
+<p align="center">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p6-long.png" width="400">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p7-long.png" width="400">
+</p>
+<p align="center">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p8.png" width="400">
+  <img src="Codes/figures-git/fullcomp-msd-log-0p9.png" width="400">
+</p>
 
 ### Conclusions
 The model reproduces the fundamental relationship between volatility and liquidity, as seen in the figure.  This relationship is unaffected by the existence of memory within the system.  For small values of the fractional derivative order, there exists behavior qualitatively similar to a marginal glass.  While this is far from conclusive, it shows some interesting features of financial markets that warrant further study.  Larger values of the fractional derivative order lead to oscillations in the realized volatility.  Because of the mathematical structure of the model it is difficult to use the typical tools of rough volatility financial models.  Therefore, more research would be required to compare this model with those already in existence to see if there are truly any different results.  The model analyzed in this report has generated potentially interesting behavior, but it has raised more questions than answers: continued study into this model is necessary to understand better what it is describing.
