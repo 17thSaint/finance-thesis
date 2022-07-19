@@ -64,7 +64,9 @@ $$
 
 where $\sigma_0$ is a constant that comes from regular Brownian motion.  From here on, this value is normalized out of the paths.  The Hurst parameter is limited to $H \in (0,1)$, and the question is what these different values of H actually correspond to.
 
-include history correlation figure
+<p align="center">
+  <img src="Codes/figures-git/history-correlation-vs-H-range-dist.png" width="400">
+</p>
 
 Figure here shows the time autocorrelation of fractional Brownian motion paths as a function of $H$.  The time autocorrelation measures the correlation between a point in the path at time $t$ with a point on the path some time later.  The correlation is averaged over points from the entire given path.  What is seen, in Figure here, is that for $H$ = $1/2$ the correlation to history is zero, i.e. no memory.  For $H$ $<$ $1/2$, there is negative correlation to history while for $H$ $>$ $1/2$, there is a positive correlation.  We know that this correlation as a function of the Hurst parameter is exactly correct.  Also, as expected, the strength of the correlation decays as the time separation gets larger.
 
@@ -108,7 +110,9 @@ $$
 
 where $u(t)$ are the returns and $\lambda$ is called the market depth.  The market depth is the amount of excess demand required to move the price by one unit, or in financial terms: market liquidity, from now on referred to just as liquidity.
 
-figure of liquidity table
+<p align="center">
+  <img src="Codes/figures-git/liquidity-table.png" width="400">
+</p>
 
 In a financial market, there is an orderbook: a list of all prices that the actors are willing to buy and sell the asset.  When that orderbook only has a small number of actors willing to buy/sell the asset at only a few prices, as in the right side of the table, the market is illiquid.  When large transactions are made, the orderbook will empty out and the current price of the asset will change drastically.  When the orderbook is well filled, as in the left side of the table, there are large numbers of actors willing to buy and sell at any price around the current value: high liquidity.  This means that even when a transaction is made that buys/sells a large amount of the asset, the orderbook stays well filled and mostly unchanged.
 
@@ -222,7 +226,9 @@ When $\beta \lambda < a$, the impact of recent trends is less than what the mark
 ## Monte Carlo Solution Finder
 At this point, we have a differential equation that describes a financial system with memory and a numerical method for generating fractional Brownian motion.  Now, we solve the equation.  The financial differential equation is quite difficult to solve analytically, so instead we decide to solve it numerically.  The key to most numerical equation solvers is how the next guess at the solution is made.  The method of choosing the next guess is typically built around what kind of equation is trying to be solved.  However, this can require extensive knowledge of the equation being solved.  For some ease in building a numerical solver, we use a simple Metropolis-Hastings Monte Carlo method to find our next guess.  The method goes as follows,
 
-include figure of mc pseudo-code
+<p align="center">
+  <img src="Codes/figures-git/mc-pseudocode.png" width="800">
+</p>
 
 The function $g(t)$ is the full differential equation without the fractional derivative term.  Thus, it is straight-forward to find an analytic solution.  The interesting part is to figure out how to guess the next possible solution.  This is where the Monte Carlo method comes in.
 
